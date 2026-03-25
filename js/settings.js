@@ -59,13 +59,13 @@ const FONT = {
 
 // ── Physics ──────────────────────────────────────────
 const GRAVITY      = 1500;
-const JUMP_VEL     = -780;
-const JUMP_VEL_MIN = -400;
-const JUMP_HOLD_MS = 200;
+const JUMP_VEL     = -620;   // ลดจาก -780 → กระโดดไม่ทะลุ 2 ชั้น
+const JUMP_VEL_MIN = -340;
+const JUMP_HOLD_MS = 180;
 
 // ── Player ───────────────────────────────────────────
-const PLAYER_W      = 44;    // ลดจาก 48 → ผ่านช่องแคบได้ดีกว่า
-const PLAYER_H      = 52;    // ลดจาก 56
+const PLAYER_W      = 52;    // ใหญ่ขึ้น
+const PLAYER_H      = 60;    // ใหญ่ขึ้น
 const PLAYER_SPEED  = 180;
 const PLAYER_HP     = 5;
 const INVINCIBLE_MS = 1500;
@@ -79,44 +79,38 @@ const GROUND_Y    = PLAY_BOTTOM - 26;     // 554
 const GROUND_H    = 26;
 
 // ── Platform Layouts ─────────────────────────────────
-// ทุกช่อง gap ระหว่าง platform ≥ 60px (player 44px + 16px margin)
+// gaps ≥ 70px for 52px player, height diff ≤ 95px for jump vel -620
 const PLAT_PRESETS = {
-  1: [  // 3 ชั้น สมมาตร
-    { x:15,  y:GROUND_Y-108, w:145 },
-    { x:230, y:GROUND_Y-108, w:145 },
-    { x:90,  y:GROUND_Y-218, w:210 },
-    { x:15,  y:GROUND_Y-328, w:145 },
-    { x:230, y:GROUND_Y-328, w:145 },
+  1: [
+    { x:10,  y:GROUND_Y-90,  w:145 },
+    { x:235, y:GROUND_Y-90,  w:145 },
+    { x:80,  y:GROUND_Y-180, w:230 },
+    { x:10,  y:GROUND_Y-270, w:145 },
+    { x:235, y:GROUND_Y-270, w:145 },
   ],
-  2: [  // 4 ชั้น ไม่สมมาตร — gap ≥ 60px
-    { x:5,   y:GROUND_Y-100, w:140 },
-    { x:245, y:GROUND_Y-100, w:140 },
-    // gap between: 245-(5+140)=100 ✓
-    { x:120, y:GROUND_Y-195, w:150 },
-    { x:5,   y:GROUND_Y-290, w:155 },
-    { x:230, y:GROUND_Y-290, w:155 },
-    // gap: 230-(5+155)=70 ✓
-    { x:90,  y:GROUND_Y-380, w:210 },
+  2: [
+    { x:5,   y:GROUND_Y-85,  w:140 },
+    { x:245, y:GROUND_Y-85,  w:140 },
+    { x:110, y:GROUND_Y-170, w:170 },
+    { x:5,   y:GROUND_Y-255, w:155 },
+    { x:230, y:GROUND_Y-255, w:155 },
+    { x:80,  y:GROUND_Y-340, w:230 },
   ],
-  3: [  // 4 ชั้น + moving — gap ≥ 60px
-    { x:15,  y:GROUND_Y-105, w:135 },
-    { x:240, y:GROUND_Y-105, w:135 },
-    // gap: 240-(15+135)=90 ✓
-    { x:60,  y:GROUND_Y-210, w:120 },
-    { x:250, y:GROUND_Y-210, w:120 },
-    // gap: 250-(60+120)=70 ✓
-    { x:15,  y:GROUND_Y-315, w:155 },
-    { x:220, y:GROUND_Y-315, w:155 },
-    { x:100, y:GROUND_Y-400, w:190 },
-    // moving platform
-    { x:130, y:GROUND_Y-155, w:100, moving:true, moveRange:100, moveSpeed:45 },
-  ],
-  4: [  // 3 ชั้น กว้าง (boss arena)
-    { x:15,  y:GROUND_Y-112, w:165 },
-    { x:210, y:GROUND_Y-112, w:165 },
-    // gap: 210-(15+165)=30 → fix ↓
-    { x:50,  y:GROUND_Y-228, w:290 },
+  3: [
+    { x:10,  y:GROUND_Y-85,  w:140 },
+    { x:240, y:GROUND_Y-85,  w:140 },
+    { x:55,  y:GROUND_Y-170, w:130 },
+    { x:255, y:GROUND_Y-170, w:125 },
+    { x:10,  y:GROUND_Y-255, w:160 },
+    { x:220, y:GROUND_Y-255, w:160 },
     { x:90,  y:GROUND_Y-340, w:210 },
+    { x:120, y:GROUND_Y-130, w:110, moving:true, moveRange:110, moveSpeed:45 },
+  ],
+  4: [
+    { x:10,  y:GROUND_Y-90,  w:165 },
+    { x:215, y:GROUND_Y-90,  w:165 },
+    { x:40,  y:GROUND_Y-180, w:310 },
+    { x:80,  y:GROUND_Y-270, w:230 },
   ],
 };
 
@@ -227,13 +221,13 @@ const ASSET_SOUNDS = {
 };
 
 // ── Joypad ───────────────────────────────────────────
-const BTN_SIZE = 56;
-const BTN_GAP  = 8;
-const JPC_Y    = HEIGHT - JOYPAD_H/2; // center Y
+const BTN_SIZE = 64;
+const BTN_GAP  = 10;
+const JPC_Y    = HEIGHT - JOYPAD_H/2;
 
 const JBTN = {
-  LEFT:  { x:24,                         y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'◀' },
-  RIGHT: { x:24+BTN_SIZE+BTN_GAP,       y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'▶' },
-  B:     { x:WIDTH-24-BTN_SIZE*2-BTN_GAP,y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'B' },
-  A:     { x:WIDTH-24-BTN_SIZE,          y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'A' },
+  LEFT:  { x:18,                          y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'◀' },
+  RIGHT: { x:18+BTN_SIZE+BTN_GAP,        y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'▶' },
+  B:     { x:WIDTH-18-BTN_SIZE*2-BTN_GAP, y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'B' },
+  A:     { x:WIDTH-18-BTN_SIZE,           y:JPC_Y-BTN_SIZE/2, r:BTN_SIZE/2, label:'A' },
 };

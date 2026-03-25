@@ -33,15 +33,26 @@ class HUD {
 
     const y1 = 20;
 
-    // Hearts
-    ctx.textBaseline = 'middle';
+    // Hearts — draw as shapes for reliable rendering
     for (let i = 0; i < player.maxHp; i++) {
-      ctx.font = '15px ' + FONT.BODY;
-      ctx.fillStyle = i < player.hp ? COL.HEART_ON : COL.HEART_OFF;
-      ctx.textAlign = 'left';
-      ctx.fillText('❤', 8 + i * 20, y1);
+      const hx = 10 + i * 21;
+      const hy = y1;
+      if (i < player.hp) {
+        // Full heart — red
+        ctx.fillStyle = COL.HEART_ON;
+        this._drawHeart(ctx, hx, hy, 8);
+        ctx.fill();
+      } else {
+        // Empty heart — outline only
+        ctx.fillStyle = '#FFE0B2';
+        this._drawHeart(ctx, hx, hy, 8);
+        ctx.fill();
+        ctx.strokeStyle = '#FFCC80';
+        ctx.lineWidth = 1;
+        this._drawHeart(ctx, hx, hy, 8);
+        ctx.stroke();
+      }
     }
-    ctx.textBaseline = 'alphabetic';
 
     // Stage
     ctx.font = '12px ' + FONT.MAIN;
@@ -136,6 +147,16 @@ class HUD {
       ctx.restore();
     }
     ctx.textAlign = 'left';
+  }
+
+  _drawHeart(ctx, cx, cy, r) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + r * 0.4);
+    ctx.bezierCurveTo(cx, cy - r * 0.5, cx - r, cy - r * 0.5, cx - r, cy + r * 0.1);
+    ctx.bezierCurveTo(cx - r, cy + r * 0.6, cx, cy + r, cx, cy + r * 1.2);
+    ctx.bezierCurveTo(cx, cy + r, cx + r, cy + r * 0.6, cx + r, cy + r * 0.1);
+    ctx.bezierCurveTo(cx + r, cy - r * 0.5, cx, cy - r * 0.5, cx, cy + r * 0.4);
+    ctx.closePath();
   }
 
   _roundRect(ctx, x, y, w, h, r) {

@@ -97,22 +97,31 @@ class BossUnit {
     if (this.x < 0) { this.x = 0; this.facing = 1; }
     if (this.x + this.w > WIDTH) { this.x = WIDTH - this.w; this.facing = -1; }
 
-    // Spawn minions (final boss)
-    if (this.isFinal && game) {
+    // Spawn minions (both mini boss and final boss)
+    if (game) {
       this.spawnTimer -= dt * 1000;
-      const interval = this.phase === 3 ? BOSS.p3SpawnInterval :
-                       this.phase === 2 ? BOSS.p2SpawnInterval : BOSS.p1SpawnInterval;
-      const count = this.phase >= 2 ? BOSS.p2SpawnCount : BOSS.p1SpawnCount;
+      let interval, count;
+      if (this.isFinal) {
+        interval = this.phase === 3 ? BOSS.p3SpawnInterval :
+                   this.phase === 2 ? BOSS.p2SpawnInterval : BOSS.p1SpawnInterval;
+        count = this.phase >= 2 ? BOSS.p2SpawnCount : BOSS.p1SpawnCount;
+      } else {
+        // Mini boss spawns 1 enemy every 10s (angry: 7s)
+        interval = this.isAngry ? 7000 : 10000;
+        count = 1;
+      }
       if (this.spawnTimer <= 0) {
         this.spawnTimer = interval;
+        const types = this.isFinal ? ['ERASER','CLOWN','CANDY'] : ['ERASER','CANDY'];
         for (let i = 0; i < count; i++) {
           const sx = Math.random() * (WIDTH - 40);
-          game.enemyManager.spawnSingle('ERASER', sx, PLAY_TOP + 10, world);
+          const et = types[Math.floor(Math.random() * types.length)];
+          game.enemyManager.spawnSingle(et, sx, PLAY_TOP + 10, world);
         }
       }
 
-      // Drop health food occasionally (phase 2+)
-      if (this.phase >= 2 && Math.random() < 0.01 * dt) {
+      // Drop health food occasionally (final boss phase 2+)
+      if (this.isFinal && this.phase >= 2 && Math.random() < 0.01 * dt) {
         game.itemManager.spawnItem('FOOD', this.x + this.w / 2, this.y + this.h);
       }
     }

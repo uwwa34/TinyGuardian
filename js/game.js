@@ -385,17 +385,29 @@ class Game {
     ctx.font = '14px '+FONT.BODY;
     ctx.fillText('— ผู้พิทักษ์ตัวจิ๋ว —', WIDTH/2, titleY+80);
 
-    // Player
+    // Player character — draw using the actual player draw method
     ctx.save();
-    const py = 370+Math.sin(this.introTimer*3)*5;
-    ctx.translate(WIDTH/2-PLAYER_W*0.65, py);
-    ctx.scale(1.3,1.3);
-    this.player.state = 'idle'; this.player.facing = 1;
-    this.player._drawEmoji(ctx, PLAYER_W, PLAYER_H);
+    const py = 360+Math.sin(this.introTimer*3)*5;
+    // Temporarily position and scale the player for drawing
+    const savedX = this.player.x, savedY = this.player.y;
+    this.player.x = WIDTH/2 - PLAYER_W*0.75;
+    this.player.y = py;
+    this.player.state = 'idle';
+    this.player.facing = 1;
+    ctx.save();
+    const sc = 1.5;
+    ctx.translate(WIDTH/2, py + PLAYER_H/2);
+    ctx.scale(sc, sc);
+    ctx.translate(-PLAYER_W/2, -PLAYER_H/2);
+    // Draw with image if available, else emoji
+    if (this.images && this.images.player) {
+      ctx.drawImage(this.images.player, 0, 0, PLAYER_W, PLAYER_H);
+    } else {
+      this.player._drawEmoji(ctx, PLAYER_W, PLAYER_H);
+    }
     ctx.restore();
-
-    ctx.font = '48px '+FONT.BODY; ctx.textAlign = 'center';
-    ctx.fillText('🛡️', WIDTH/2, 340);
+    this.player.x = savedX; this.player.y = savedY;
+    ctx.restore();
 
     ctx.font = '15px '+FONT.BODY; ctx.fillStyle = COL.COCOA;
     ctx.fillText('ปกป้องโลกจากเหล่าวายร้ายกัน!', WIDTH/2, 500);
