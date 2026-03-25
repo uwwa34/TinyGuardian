@@ -1,0 +1,17 @@
+{
+  "name": "Tiny Guardian — ผู้พิทักษ์ตัวจิ๋ว",
+  "short_name": "Tiny Guardian",
+  "description": "ปกป้องโลกจากเหล่าวายร้าย! เกม platformer น่ารักสำหรับเด็ก",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#FFF8E1",
+  "theme_color": "#FFD54F",
+  "icons": [
+    {
+      "src": "assets/images/player.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

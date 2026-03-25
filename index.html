@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0,
+        user-scalable=no, viewport-fit=cover" />
+
+  <title>Tiny Guardian — ผู้พิทักษ์ตัวจิ๋ว</title>
+  <meta name="description" content="ปกป้องโลกจากเหล่าวายร้าย! เกม platformer สุดน่ารักสำหรับเด็ก" />
+  <meta name="theme-color" content="#FFD54F" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="assets/images/player.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Tiny Guardian" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;700&display=swap"
+        rel="stylesheet" media="print" onload="this.media='all'">
+
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body {
+      width:100%; height:100%;
+      background:#FFF8E1;
+      overflow:hidden;
+      touch-action:none;
+      font-family:'Nunito','Segoe UI Emoji',sans-serif;
+    }
+    #wrapper {
+      position:absolute;
+      width:390px; height:720px;
+      transform-origin:top left;
+    }
+    canvas {
+      display:block;
+      width:390px; height:720px;
+      image-rendering:pixelated;
+      cursor:pointer;
+    }
+    #loading {
+      position:absolute; inset:0;
+      background:linear-gradient(180deg, #FFF8E1, #FFE082);
+      display:flex; flex-direction:column;
+      justify-content:center; align-items:center;
+      gap:14px; z-index:10;
+    }
+    .load-logo {
+      width:80px; height:80px;
+      display:flex; align-items:center; justify-content:center;
+      animation:loadBounce 0.9s infinite ease-in-out;
+    }
+    .load-logo img {
+      width:80px; height:80px;
+      object-fit:contain;
+      image-rendering:pixelated;
+    }
+    .load-title {
+      font-family:'Fredoka One',cursive;
+      color:#4E342E; font-size:28px; letter-spacing:1px;
+    }
+    .load-sub { color:#F9A825; font-size:14px; font-weight:700; }
+    #load-bar-bg {
+      width:260px; height:10px;
+      background:#FFE0B2; border-radius:5px; overflow:hidden;
+    }
+    #load-bar {
+      height:100%; width:0%;
+      background:linear-gradient(90deg,#FFD54F,#F9A825);
+      border-radius:5px; transition:width 0.12s ease;
+    }
+    #load-msg { font-size:12px; color:#F9A825; min-height:18px; text-align:center; }
+    @keyframes loadBounce {
+      0%,100% { transform:translateY(0) rotate(-5deg); }
+      50%     { transform:translateY(-14px) rotate(5deg); }
+    }
+    #scanlines {
+      position:absolute; inset:0; pointer-events:none;
+      background:repeating-linear-gradient(0deg,transparent,transparent 3px,
+        rgba(0,0,0,0.012) 3px,rgba(0,0,0,0.012) 4px);
+      z-index:1;
+    }
+  </style>
+</head>
+<body>
+
+<!-- iOS Audio Unlock -->
+<script>
+(function(){
+  var unlocked = false;
+  function unlock() {
+    if (document.hidden) return;
+    if (!unlocked) {
+      unlocked = true;
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          var ctx = new AC();
+          window._audioCtx = ctx;
+          var buf = ctx.createBuffer(1,1,22050);
+          var src = ctx.createBufferSource();
+          src.buffer = buf; src.connect(ctx.destination); src.start(0);
+          ctx.resume();
+        }
+      } catch(e) {}
+      if (window._game && window._game._unlockAudio) {
+        window._game._unlockAudio();
+      }
+    }
+  }
+  ['touchstart','touchend','pointerdown','mousedown','click','keydown'].forEach(function(ev){
+    document.addEventListener(ev, unlock, {passive:true});
+  });
+})();
+</script>
+
+<div id="wrapper">
+  <canvas id="gameCanvas" width="390" height="720"></canvas>
+  <div id="scanlines"></div>
+  <div id="loading">
+    <div id="load-logo" class="load-logo">
+      <img src="assets/images/player.png" alt="player"
+           onerror="this.style.display='none';this.parentNode.textContent='🛡️'"/>
+    </div>
+    <div class="load-title">TINY GUARDIAN</div>
+    <div class="load-sub">ผู้พิทักษ์ตัวจิ๋ว</div>
+    <div id="load-bar-bg"><div id="load-bar"></div></div>
+    <div id="load-msg">กำลังเตรียมการผจญภัย...</div>
+  </div>
+</div>
+
+<!-- Game scripts -->
+<script src="js/settings.js"></script>
+<script src="js/player.js"></script>
+<script src="js/world.js"></script>
+<script src="js/enemy.js"></script>
+<script src="js/projectile.js"></script>
+<script src="js/items.js"></script>
+<script src="js/boss.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/ranking.js"></script>
+<script src="js/game.js"></script>
+
+<script>
+// ── Canvas Scaling ────────────────────────────────
+(function(){
+  var w = document.getElementById('wrapper');
+  function resize() {
+    var s = Math.min(window.innerWidth / 390, window.innerHeight / 720);
+    w.style.transform = 'scale(' + s + ')';
+    w.style.left = ((window.innerWidth  - 390*s) / 2) + 'px';
+    w.style.top  = ((window.innerHeight - 720*s) / 2) + 'px';
+  }
+  window.addEventListener('resize', resize);
+  resize();
+})();
+
+// ── Asset Loaders ─────────────────────────────────
+function setBar(pct, msg) {
+  document.getElementById('load-bar').style.width = pct + '%';
+  if (msg) document.getElementById('load-msg').textContent = msg;
+}
+
+function loadImg(src) {
+  return new Promise(function(resolve) {
+    var img = new Image();
+    img.onload  = function(){ resolve(img); };
+    img.onerror = function(){ resolve(null); };
+    img.src = src;
+  });
+}
+
+function loadSnd(src, isBGM) {
+  if (isBGM) {
+    return new Promise(function(resolve) {
+      var a = new Audio();
+      a.preload = 'auto';
+      a.src = src;
+      setTimeout(function(){ resolve(a); }, 100);
+    });
+  }
+  return fetch(src)
+    .then(function(r){ return r.arrayBuffer(); })
+    .then(function(buf){ return { _sfxBuf: buf, _src: src }; })
+    .catch(function(){
+      var a = new Audio(); a.src = src; return a;
+    });
+}
+
+// ── Boot Sequence ─────────────────────────────────
+(async function boot() {
+  try {
+    setBar(5, 'เริ่มต้น...');
+    var canvas = document.getElementById('gameCanvas');
+    var game = new Game(canvas);
+
+    setBar(15, 'โหลดรูปภาพ...');
+    var ikeys = Object.keys(ASSET_IMAGES);
+    var iResults = await Promise.all(ikeys.map(function(k){ return loadImg(ASSET_IMAGES[k]); }));
+    var images = {};
+    ikeys.forEach(function(k, i){ if (iResults[i]) images[k] = iResults[i]; });
+
+    setBar(50, 'โหลดเสียง...');
+    var skeys   = Object.keys(ASSET_SOUNDS);
+    var bgmKeys = ['bgm'];
+    var sResults = await Promise.all(skeys.map(function(k){
+      return loadSnd(ASSET_SOUNDS[k], bgmKeys.indexOf(k) >= 0);
+    }));
+    var sounds = {};
+    skeys.forEach(function(k, i){ if (sResults[i]) sounds[k] = sResults[i]; });
+
+    setBar(100, 'พร้อมแล้ว! 🛡️');
+    game.setImages(images);
+    game.setSounds(sounds);
+
+    await new Promise(function(r){ setTimeout(r, 250); });
+
+    var ld = document.getElementById('loading');
+    ld.style.transition = 'opacity 0.3s';
+    ld.style.opacity = '0';
+    setTimeout(function(){ ld.style.display = 'none'; }, 300);
+
+    game.start();
+
+  } catch (err) {
+    var msgEl = document.getElementById('load-msg');
+    var barEl = document.getElementById('load-bar');
+    msgEl.style.color     = '#C84A00';
+    msgEl.textContent     = 'เกิดข้อผิดพลาด: ' + (err.message || String(err));
+    barEl.style.background = '#E84A00';
+    barEl.style.width     = '100%';
+    console.error('[TinyGuardian] Boot failed:', err);
+  }
+})();
+</script>
+</body>
+</html>
