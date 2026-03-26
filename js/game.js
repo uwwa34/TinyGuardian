@@ -95,6 +95,7 @@ class Game {
         break;
       case STATE.TALLY:  this.tally.update(dt); break;
       case STATE.NAME:   this.nameScreen.update(dt); break;
+      case STATE.RANKING: this.rankingScreen.update(); break;
     }
 
     for (const p of this.particles) {
@@ -140,9 +141,20 @@ class Game {
           // More waves to spawn
           this.waveDelay = 1500;
         } else {
-          // All waves done, stage clear!
-          this._stageClear();
+          // All waves done — delay 3.5s for item collection then clear
+          this._stageClearing = true;
+          this._clearDelay = 3.5;
+          this.hud.addNotification('✨ Wave Clear!');
         }
+      }
+    }
+
+    // Clear delay countdown
+    if (this._stageClearing && this._clearDelay > 0) {
+      this._clearDelay -= dt;
+      if (this._clearDelay <= 0) {
+        this._clearDelay = 0;
+        this._stageClear();
       }
     }
 
@@ -216,8 +228,15 @@ class Game {
           this.player.applyPowerup(item.powerupKey, this);
           this.hud.addNotification(POWERUP_TYPES[item.powerupKey].label);
           this.playSfx('powerup');
+        } else if (item.healsHp) {
+          if (this.player.hp < this.player.maxHp) {
+            this.player.hp++;
+            this.hud.addComboPopup('+1 HP', item.x, item.y, COL.HEART_ON);
+            this.playSfx('powerup');
+          }
         } else if (item.healsFat) {
           this.player.healFat(this);
+          this.hud.addComboPopup('Slim!', item.x, item.y, COL.MINT);
         } else {
           this.player.score += item.points;
           this.player.itemsCollected++;
@@ -427,9 +446,9 @@ class Game {
   _drawPlaying(ctx) {
     this.world.drawBackground(ctx);
     this.world.drawPlatforms(ctx);
-    this.itemManager.draw(ctx);
+    this.itemManager.draw(ctx, this.images);
     this.enemyManager.draw(ctx, this.images);
-    if (this.boss) this.boss.draw(ctx);
+    if (this.boss) this.boss.draw(ctx, this.images);
     this.projManager.draw(ctx);
     this.player.draw(ctx, this.images);
     this.hud.draw(ctx, this.player, this.currentStage, this.stageTimer);

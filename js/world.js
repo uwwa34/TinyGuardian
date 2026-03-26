@@ -65,23 +65,32 @@ class World {
     }
   }
 
-  drawBackground(ctx) {
+  drawBackground(ctx, images) {
     const sc = STAGE_COL[this.stage];
-    // gradient sky
-    const grad = ctx.createLinearGradient(0, PLAY_TOP, 0, GROUND_Y);
-    grad.addColorStop(0, sc.bg);
-    grad.addColorStop(1, sc.bg2);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, PLAY_TOP, WIDTH, GROUND_Y - PLAY_TOP);
+    const playH = GROUND_Y - PLAY_TOP;
 
-    // clouds
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    for (const c of this.cloudOffsets) {
-      this._drawCloud(ctx, c.x, c.y, 28 * c.s);
+    // Try background image: per-stage first, then shared
+    const bgKey = 'bg_stage' + this.stage;
+    const bgImg = images && (images[bgKey] || images.background);
+    if (bgImg) {
+      ctx.drawImage(bgImg, 0, PLAY_TOP, WIDTH, playH);
+    } else {
+      // Fallback: gradient sky
+      const grad = ctx.createLinearGradient(0, PLAY_TOP, 0, GROUND_Y);
+      grad.addColorStop(0, sc.bg);
+      grad.addColorStop(1, sc.bg2);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, PLAY_TOP, WIDTH, playH);
+
+      // clouds
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      for (const c of this.cloudOffsets) {
+        this._drawCloud(ctx, c.x, c.y, 28 * c.s);
+      }
+
+      // stage-specific decorations
+      this._drawStageDecor(ctx);
     }
-
-    // stage-specific decorations
-    this._drawStageDecor(ctx);
 
     // ground
     ctx.fillStyle = sc.ground;
