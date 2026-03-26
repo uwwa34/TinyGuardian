@@ -224,7 +224,7 @@ class BossUnit {
     }
   }
 
-  draw(ctx) {
+  draw(ctx, images) {
     if (!this.alive) return;
     ctx.save();
 
