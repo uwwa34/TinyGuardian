@@ -243,7 +243,20 @@ class BossUnit {
       dx = 0; dy = 0;
     }
 
-    // Body
+    // Try image first
+    const imgKey = this.isFinal ? 'boss' : 'miniboss';
+    if (images && images[imgKey]) {
+      const img = images[imgKey];
+      if (this.facing < 0 && !this.dying) {
+        ctx.translate(dx + this.w, dy); ctx.scale(-1, 1);
+        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, this.w, this.h);
+      } else {
+        ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, this.w, this.h);
+      }
+      if (this.flashTimer > 0) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#FFF'; ctx.fillRect(this.dying?0:dx, this.dying?0:dy, this.w, this.h); ctx.globalAlpha = 1; }
+      if (this.isAngry) { ctx.fillStyle = 'rgba(239,83,80,0.25)'; ctx.fillRect(this.dying?0:dx, this.dying?0:dy, this.w, this.h); }
+    } else {
+    // Fallback: programmatic body
     const col = this.flashTimer > 0 ? '#FFF' :
                 this.isAngry ? (this.cfg.angryColor || '#EF5350') :
                 (this.cfg.color || '#9575CD');
@@ -314,13 +327,14 @@ class BossUnit {
       ctx.stroke();
     }
 
-    // Emoji
+    // Emoji (fallback only)
     ctx.font = (this.w * 0.35) + 'px ' + FONT.BODY;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(this.cfg.emoji, dx + this.w / 2, dy + this.h * 0.65);
+    } // end fallback else
 
-    // HP bar
+    // HP bar (always shown)
     if (!this.dying) {
       const barW = this.w + 10;
       const barH = 6;

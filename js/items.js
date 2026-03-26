@@ -72,7 +72,8 @@ class ItemUnit {
 
     // Try image
     if (images && this.imgKey && images[this.imgKey]) {
-      ctx.drawImage(images[this.imgKey], this.x, dy, this.w, this.h);
+      const img = images[this.imgKey];
+      ctx.drawImage(img, 0, 0, img.width, img.height, this.x, dy, this.w, this.h);
     } else {
       ctx.font = this.w+'px '+FONT.BODY;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';

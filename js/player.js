@@ -325,7 +325,15 @@ class Player {
     }
 
     if (images && images.player) {
-      ctx.drawImage(images.player, 0, 0, dw, dh);
+      const img = images.player;
+      // If image is much wider than tall → likely sprite sheet, crop first frame
+      const aspect = img.width / img.height;
+      if (aspect > 1.5) {
+        const frameW = Math.floor(img.height * (PLAYER_W / PLAYER_H));
+        ctx.drawImage(img, 0, 0, frameW, img.height, 0, 0, dw, dh);
+      } else {
+        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, dw, dh);
+      }
     } else {
       this._drawEmoji(ctx, dw, dh);
     }

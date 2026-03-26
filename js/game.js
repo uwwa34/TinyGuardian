@@ -420,7 +420,10 @@ class Game {
     ctx.translate(-PLAYER_W/2, -PLAYER_H/2);
     // Draw with image if available, else emoji
     if (this.images && this.images.player) {
-      ctx.drawImage(this.images.player, 0, 0, PLAYER_W, PLAYER_H);
+      const img = this.images.player;
+      const aspect = img.width / img.height;
+      const srcW = aspect > 1.5 ? Math.floor(img.height * (PLAYER_W / PLAYER_H)) : img.width;
+      ctx.drawImage(img, 0, 0, srcW, img.height, 0, 0, PLAYER_W, PLAYER_H);
     } else {
       this.player._drawEmoji(ctx, PLAYER_W, PLAYER_H);
     }
@@ -444,8 +447,8 @@ class Game {
   }
 
   _drawPlaying(ctx) {
-    this.world.drawBackground(ctx);
-    this.world.drawPlatforms(ctx);
+    this.world.drawBackground(ctx, this.images);
+    this.world.drawPlatforms(ctx, this.images);
     this.itemManager.draw(ctx, this.images);
     this.enemyManager.draw(ctx, this.images);
     if (this.boss) this.boss.draw(ctx, this.images);
