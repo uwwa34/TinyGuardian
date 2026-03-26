@@ -202,7 +202,15 @@ function loadSnd(src, isBGM) {
     var ikeys = Object.keys(ASSET_IMAGES);
     var iResults = await Promise.all(ikeys.map(function(k){ return loadImg(ASSET_IMAGES[k]); }));
     var images = {};
-    ikeys.forEach(function(k, i){ if (iResults[i]) images[k] = iResults[i]; });
+    ikeys.forEach(function(k, i){
+      if (iResults[i]) {
+        images[k] = iResults[i];
+        console.log('[IMG] ✅ ' + k + ' (' + iResults[i].width + 'x' + iResults[i].height + ')');
+      } else {
+        console.log('[IMG] ❌ ' + k + ' → ' + ASSET_IMAGES[k] + ' (not found, using fallback)');
+      }
+    });
+    console.log('[IMG] Loaded: ' + Object.keys(images).join(', '));
 
     setBar(50, 'โหลดเสียง...');
     var skeys   = Object.keys(ASSET_SOUNDS);
