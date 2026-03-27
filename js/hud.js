@@ -19,18 +19,18 @@ class HUD {
     ctx.fillStyle=hG; ctx.fillRect(0,0,WIDTH,HUD_H);
     ctx.fillStyle=COL.PRIMARY; ctx.fillRect(0,HUD_H-2,WIDTH,2);
 
-    // Row 1: Hearts (2 rows of 5)
-    const heartR=6;
+    // Hearts (2 rows × 5, bigger r=8, left side)
+    const heartR=8, heartSpX=20, heartSpY=18;
     for(let i=0;i<player.maxHp;i++){
       const row=Math.floor(i/5), col=i%5;
-      const hx=8+col*17, hy=10+row*16;
+      const hx=10+col*heartSpX, hy=12+row*heartSpY;
       if(i<player.hp){ctx.fillStyle=COL.HEART_ON;this._drawHeart(ctx,hx,hy,heartR);ctx.fill();}
       else{ctx.fillStyle='#FFE0B2';this._drawHeart(ctx,hx,hy,heartR);ctx.fill();ctx.strokeStyle='#FFCC80';ctx.lineWidth=1;this._drawHeart(ctx,hx,hy,heartR);ctx.stroke();}
     }
 
-    // Stage label
+    // Stage label (right of hearts area)
     ctx.font='12px '+FONT.MAIN;ctx.fillStyle=COL.HUD_TEXT;ctx.textAlign='center';
-    ctx.fillText('STAGE '+stageNum, WIDTH/2, 18);
+    ctx.fillText('STAGE '+stageNum, WIDTH/2+30, 18);
 
     // Score
     ctx.font='12px '+FONT.MAIN;ctx.fillStyle=COL.PRIMARY_D;ctx.textAlign='right';

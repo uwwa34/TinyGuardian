@@ -73,7 +73,15 @@ class World {
     const bgKey = 'bg_stage' + this.stage;
     const bgImg = images && (images[bgKey] || images.background);
     if (bgImg) {
+      // Draw image dimmed so characters stand out
+      ctx.globalAlpha = 0.55;
       ctx.drawImage(bgImg, 0, PLAY_TOP, WIDTH, playH);
+      ctx.globalAlpha = 1;
+      // Tinted overlay matching stage color
+      ctx.fillStyle = sc.bg;
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(0, PLAY_TOP, WIDTH, playH);
+      ctx.globalAlpha = 1;
     } else {
       // Fallback: gradient sky
       const grad = ctx.createLinearGradient(0, PLAY_TOP, 0, GROUND_Y);

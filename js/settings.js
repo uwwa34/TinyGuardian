@@ -38,12 +38,32 @@ const HUD_H=64, JOYPAD_H=140;
 const PLAY_TOP=HUD_H, PLAY_BOTTOM=HEIGHT-JOYPAD_H;
 const GROUND_Y=PLAY_BOTTOM-26, GROUND_H=26;
 
-// ── Platform Layouts (all gaps ≥ 80px) ───────────────
+// ── Platform Layouts ─────────────────────────────────
+// Rule: ชิดขอบจอ (x=0/end=390) หรือ gap ≥ 60px
 const PLAT_PRESETS={
-  1:[{x:5,y:GROUND_Y-90,w:135},{x:250,y:GROUND_Y-90,w:135},{x:70,y:GROUND_Y-180,w:250},{x:5,y:GROUND_Y-270,w:135},{x:250,y:GROUND_Y-270,w:135}],
-  2:[{x:0,y:GROUND_Y-85,w:130},{x:260,y:GROUND_Y-85,w:130},{x:100,y:GROUND_Y-170,w:190},{x:0,y:GROUND_Y-255,w:145},{x:245,y:GROUND_Y-255,w:145},{x:70,y:GROUND_Y-340,w:250}],
-  3:[{x:0,y:GROUND_Y-85,w:130},{x:260,y:GROUND_Y-85,w:130},{x:45,y:GROUND_Y-170,w:130},{x:260,y:GROUND_Y-170,w:125},{x:0,y:GROUND_Y-255,w:150},{x:240,y:GROUND_Y-255,w:150},{x:80,y:GROUND_Y-340,w:230},{x:100,y:GROUND_Y-130,w:110,moving:true,moveRange:120,moveSpeed:45}],
-  4:[{x:0,y:GROUND_Y-90,w:155},{x:235,y:GROUND_Y-90,w:155},{x:30,y:GROUND_Y-180,w:330},{x:70,y:GROUND_Y-270,w:250}],
+  1:[
+    {x:0,y:GROUND_Y-90,w:135},{x:255,y:GROUND_Y-90,w:135},
+    {x:65,y:GROUND_Y-180,w:260},
+    {x:0,y:GROUND_Y-270,w:135},{x:255,y:GROUND_Y-270,w:135},
+  ],
+  2:[
+    {x:0,y:GROUND_Y-85,w:130},{x:260,y:GROUND_Y-85,w:130},
+    {x:95,y:GROUND_Y-170,w:200},
+    {x:0,y:GROUND_Y-255,w:145},{x:245,y:GROUND_Y-255,w:145},
+    {x:65,y:GROUND_Y-340,w:260},
+  ],
+  3:[
+    {x:0,y:GROUND_Y-85,w:130},{x:260,y:GROUND_Y-85,w:130},
+    {x:0,y:GROUND_Y-170,w:130},{x:260,y:GROUND_Y-170,w:130},
+    {x:0,y:GROUND_Y-255,w:150},{x:240,y:GROUND_Y-255,w:150},
+    {x:75,y:GROUND_Y-340,w:240},
+    {x:95,y:GROUND_Y-130,w:110,moving:true,moveRange:120,moveSpeed:45},
+  ],
+  4:[
+    {x:0,y:GROUND_Y-90,w:155},{x:235,y:GROUND_Y-90,w:155},
+    {x:0,y:GROUND_Y-180,w:390},
+    {x:65,y:GROUND_Y-270,w:260},
+  ],
 };
 
 // ── Weapon ───────────────────────────────────────────
@@ -135,11 +155,14 @@ const ASSET_SOUNDS={
   fat:'assets/sounds/hit.wav',         slim:'assets/sounds/coin.wav',
 };
 
-// ── Joypad ───────────────────────────────────────────
-const BTN_SIZE=64, BTN_GAP=10, JPC_Y=HEIGHT-JOYPAD_H/2;
+// ── Joypad (rectangle buttons with hints) ────────────
+const BTN_W=72, BTN_H=60, BTN_GAP=6;
+const JOYPAD_PAD=10; // padding from edges
+const JPC_Y=HEIGHT-JOYPAD_H/2; // center Y
+
 const JBTN={
-  LEFT: {x:18,                         y:JPC_Y-BTN_SIZE/2,r:BTN_SIZE/2,label:'◀'},
-  RIGHT:{x:18+BTN_SIZE+BTN_GAP,       y:JPC_Y-BTN_SIZE/2,r:BTN_SIZE/2,label:'▶'},
-  B:    {x:WIDTH-18-BTN_SIZE*2-BTN_GAP,y:JPC_Y-BTN_SIZE/2,r:BTN_SIZE/2,label:'B'},
-  A:    {x:WIDTH-18-BTN_SIZE,          y:JPC_Y-BTN_SIZE/2,r:BTN_SIZE/2,label:'A'},
+  LEFT: {x:JOYPAD_PAD,                              y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'◀', hint:'Left'},
+  RIGHT:{x:JOYPAD_PAD+BTN_W+BTN_GAP,               y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'▶', hint:'Right'},
+  B:    {x:WIDTH-JOYPAD_PAD-BTN_W*2-BTN_GAP,        y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'B', hint:'Attack'},
+  A:    {x:WIDTH-JOYPAD_PAD-BTN_W,                   y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'A', hint:'Jump'},
 };

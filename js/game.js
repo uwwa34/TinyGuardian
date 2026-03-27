@@ -450,13 +450,12 @@ class Game {
   }
 
   _drawJoypad(ctx) {
-    // Yellow Pastel joypad background
+    // Background
     const jG = ctx.createLinearGradient(0, HEIGHT-JOYPAD_H, 0, HEIGHT);
     jG.addColorStop(0, 'rgba(255,236,179,0.92)');
     jG.addColorStop(1, 'rgba(255,224,130,0.95)');
     ctx.fillStyle = jG;
     ctx.fillRect(0, HEIGHT-JOYPAD_H, WIDTH, JOYPAD_H);
-    // Top edge
     ctx.fillStyle = COL.PRIMARY;
     ctx.fillRect(0, HEIGHT-JOYPAD_H, WIDTH, 2);
 
@@ -466,15 +465,35 @@ class Game {
       let col = (key==='LEFT'||key==='RIGHT') ? COL.JOYPAD_LEFT : key==='B' ? COL.JOYPAD_BTN_B : COL.JOYPAD_BTN_A;
 
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.1)';
-      ctx.beginPath(); ctx.arc(btn.x+btn.r, btn.y+btn.r+2, btn.r, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = isActive?'#FFF':col; ctx.globalAlpha = isActive?0.95:0.75;
-      ctx.beginPath(); ctx.arc(btn.x+btn.r, btn.y+btn.r, btn.r, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = isActive?col:'rgba(255,255,255,0.6)'; ctx.lineWidth = 2; ctx.stroke();
+      const bx=btn.x, by=btn.y, bw=btn.w, bh=btn.h;
+      const r=12;
+
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,0.1)';
+      ctx.beginPath();ctx.moveTo(bx+r,by+3);ctx.lineTo(bx+bw-r,by+3);ctx.quadraticCurveTo(bx+bw,by+3,bx+bw,by+r+3);ctx.lineTo(bx+bw,by+bh-r+3);ctx.quadraticCurveTo(bx+bw,by+bh+3,bx+bw-r,by+bh+3);ctx.lineTo(bx+r,by+bh+3);ctx.quadraticCurveTo(bx,by+bh+3,bx,by+bh-r+3);ctx.lineTo(bx,by+r+3);ctx.quadraticCurveTo(bx,by+3,bx+r,by+3);ctx.closePath();ctx.fill();
+
+      // Button body
+      ctx.fillStyle = isActive ? '#FFF' : col;
+      ctx.globalAlpha = isActive ? 0.95 : 0.8;
+      ctx.beginPath();ctx.moveTo(bx+r,by);ctx.lineTo(bx+bw-r,by);ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+r);ctx.lineTo(bx+bw,by+bh-r);ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-r,by+bh);ctx.lineTo(bx+r,by+bh);ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-r);ctx.lineTo(bx,by+r);ctx.quadraticCurveTo(bx,by,bx+r,by);ctx.closePath();ctx.fill();
+
+      // Border
+      ctx.strokeStyle = isActive ? col : 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
       ctx.globalAlpha = 1;
-      ctx.font = '18px '+FONT.MAIN; ctx.fillStyle = isActive?col:COL.HUD_TEXT;
+
+      // Label (big)
+      ctx.font = '20px '+FONT.MAIN;
+      ctx.fillStyle = isActive ? col : COL.HUD_TEXT;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(btn.label, btn.x+btn.r, btn.y+btn.r+1);
+      ctx.fillText(btn.label, bx+bw/2, by+bh/2-6);
+
+      // Hint (small text below)
+      ctx.font = '9px '+FONT.BODY;
+      ctx.fillStyle = isActive ? col : 'rgba(93,64,55,0.5)';
+      ctx.fillText(btn.hint, bx+bw/2, by+bh-8);
+
       ctx.restore();
     }
   }
@@ -595,11 +614,10 @@ class Game {
   }
 
   _checkJoypadBtn(pos) {
+    const pad = 8; // extra padding for easier tapping
     for (const [key, btn] of Object.entries(JBTN)) {
-      const cx = btn.x+btn.r, cy = btn.y+btn.r;
-      const dx = pos.x-cx, dy = pos.y-cy;
-      const hitR = btn.r+14;
-      if (dx*dx+dy*dy <= hitR*hitR) {
+      if (pos.x >= btn.x - pad && pos.x <= btn.x + btn.w + pad &&
+          pos.y >= btn.y - pad && pos.y <= btn.y + btn.h + pad) {
         if (key==='LEFT') this.input.left = true;
         if (key==='RIGHT') this.input.right = true;
         if (key==='A') this.input.btnA = true;
