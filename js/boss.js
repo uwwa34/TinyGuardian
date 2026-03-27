@@ -340,15 +340,18 @@ class BossUnit {
     ctx.fillText(this.cfg.emoji, dx + this.w / 2, dy + this.h * 0.65);
     } // end fallback else
 
-    // HP bar (always shown, clamped to screen)
+    ctx.restore();
+
+    // HP bar — drawn OUTSIDE save/restore using world coordinates
     if (!this.dying) {
-      ctx.globalAlpha = 1;
       const barW = this.w + 10;
       const barH = 7;
-      // Clamp HP bar X to stay within screen
       let barX = this.x + (this.w - barW) / 2;
       barX = Math.max(2, Math.min(barX, WIDTH - barW - 2));
       const barY = Math.max(PLAY_TOP + 2, this.y - 16);
+      this.ctx_temp = ctx; // temp ref
+      ctx.save();
+      ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(barX, barY, barW, barH);
       const pct = this.hp / this.maxHp;
@@ -357,9 +360,8 @@ class BossUnit {
       ctx.strokeStyle = 'rgba(0,0,0,0.4)';
       ctx.lineWidth = 1;
       ctx.strokeRect(barX, barY, barW, barH);
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   getHitbox() {
