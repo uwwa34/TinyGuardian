@@ -144,11 +144,18 @@ class EnemyUnit {
     if (images && imgKey && images[imgKey]) {
       const img = images[imgKey];
       if (this.facing < 0) { ctx.translate(this.w, 0); ctx.scale(-1, 1); }
-      // Sprite sheet: if wider than tall, use height as frame width (square frame)
       const srcW = img.width > img.height * 1.3 ? img.height : img.width;
       const srcH = img.height;
       ctx.drawImage(img, 0, 0, srcW, srcH, 0, 0, this.w, this.h);
-      if (this.angry) { ctx.fillStyle = 'rgba(239,83,80,0.3)'; ctx.fillRect(0, 0, this.w, this.h); }
+      // Angry: redraw with red tint using composite
+      if (this.angry) {
+        ctx.globalAlpha = 0.3;
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = '#EF5350';
+        ctx.fillRect(0, 0, this.w, this.h);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
     } else {
       // Fallback: programmatic draw
       const col = this.angry ? '#EF5350' : this.def.color;

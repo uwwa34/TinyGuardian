@@ -245,7 +245,14 @@ class BossUnit {
 
     // Try image first
     const imgKey = this.isFinal ? 'boss' : 'miniboss';
-    if (images && images[imgKey]) {
+    const hasImg = images && images[imgKey];
+
+    // Flash: blink entire character via globalAlpha
+    if (this.flashTimer > 0 && Math.floor(this.flashTimer / 50) % 2 === 0) {
+      ctx.globalAlpha = (this.dying ? this.dieTimer : 1) * 0.3;
+    }
+
+    if (hasImg) {
       const img = images[imgKey];
       if (this.facing < 0 && !this.dying) {
         ctx.translate(dx + this.w, dy); ctx.scale(-1, 1);
@@ -253,8 +260,7 @@ class BossUnit {
       } else {
         ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, this.w, this.h);
       }
-      if (this.flashTimer > 0) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#FFF'; ctx.fillRect(this.dying?0:dx, this.dying?0:dy, this.w, this.h); ctx.globalAlpha = 1; }
-      if (this.isAngry) { ctx.fillStyle = 'rgba(239,83,80,0.25)'; ctx.fillRect(this.dying?0:dx, this.dying?0:dy, this.w, this.h); }
+      if (this.isAngry) { ctx.globalAlpha = 0.2; ctx.fillStyle = '#EF5350'; ctx.fillRect(this.dying?0:dx, this.dying?0:dy, this.w, this.h); }
     } else {
     // Fallback: programmatic body
     const col = this.flashTimer > 0 ? '#FFF' :
@@ -334,18 +340,21 @@ class BossUnit {
     ctx.fillText(this.cfg.emoji, dx + this.w / 2, dy + this.h * 0.65);
     } // end fallback else
 
-    // HP bar (always shown)
+    // HP bar (always shown, clamped to screen)
     if (!this.dying) {
+      ctx.globalAlpha = 1;
       const barW = this.w + 10;
-      const barH = 6;
-      const barX = dx + (this.w - barW) / 2;
-      const barY = dy - 14;
+      const barH = 7;
+      // Clamp HP bar X to stay within screen
+      let barX = this.x + (this.w - barW) / 2;
+      barX = Math.max(2, Math.min(barX, WIDTH - barW - 2));
+      const barY = Math.max(PLAY_TOP + 2, this.y - 16);
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(barX, barY, barW, barH);
       const pct = this.hp / this.maxHp;
       ctx.fillStyle = pct > 0.3 ? COL.BOSS_HP2 : COL.BOSS_HP1;
       ctx.fillRect(barX, barY, barW * pct, barH);
-      ctx.strokeStyle = COL.COCOA;
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
       ctx.lineWidth = 1;
       ctx.strokeRect(barX, barY, barW, barH);
     }

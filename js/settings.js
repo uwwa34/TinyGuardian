@@ -38,18 +38,18 @@ const HUD_H=64, JOYPAD_H=140;
 const PLAY_TOP=HUD_H, PLAY_BOTTOM=HEIGHT-JOYPAD_H;
 const GROUND_Y=PLAY_BOTTOM-26, GROUND_H=26;
 
-// ── Platform Layouts ─────────────────────────────────
+// ── Platform Layouts (all gaps ≥ 80px) ───────────────
 const PLAT_PRESETS={
-  1:[{x:10,y:GROUND_Y-90,w:145},{x:235,y:GROUND_Y-90,w:145},{x:80,y:GROUND_Y-180,w:230},{x:10,y:GROUND_Y-270,w:145},{x:235,y:GROUND_Y-270,w:145}],
-  2:[{x:5,y:GROUND_Y-85,w:140},{x:245,y:GROUND_Y-85,w:140},{x:110,y:GROUND_Y-170,w:170},{x:5,y:GROUND_Y-255,w:155},{x:230,y:GROUND_Y-255,w:155},{x:80,y:GROUND_Y-340,w:230}],
-  3:[{x:10,y:GROUND_Y-85,w:140},{x:240,y:GROUND_Y-85,w:140},{x:55,y:GROUND_Y-170,w:130},{x:255,y:GROUND_Y-170,w:125},{x:10,y:GROUND_Y-255,w:160},{x:220,y:GROUND_Y-255,w:160},{x:90,y:GROUND_Y-340,w:210},{x:120,y:GROUND_Y-130,w:110,moving:true,moveRange:110,moveSpeed:45}],
-  4:[{x:10,y:GROUND_Y-90,w:165},{x:215,y:GROUND_Y-90,w:165},{x:40,y:GROUND_Y-180,w:310},{x:80,y:GROUND_Y-270,w:230}],
+  1:[{x:5,y:GROUND_Y-90,w:135},{x:250,y:GROUND_Y-90,w:135},{x:70,y:GROUND_Y-180,w:250},{x:5,y:GROUND_Y-270,w:135},{x:250,y:GROUND_Y-270,w:135}],
+  2:[{x:0,y:GROUND_Y-85,w:130},{x:260,y:GROUND_Y-85,w:130},{x:100,y:GROUND_Y-170,w:190},{x:0,y:GROUND_Y-255,w:145},{x:245,y:GROUND_Y-255,w:145},{x:70,y:GROUND_Y-340,w:250}],
+  3:[{x:0,y:GROUND_Y-85,w:130},{x:260,y:GROUND_Y-85,w:130},{x:45,y:GROUND_Y-170,w:130},{x:260,y:GROUND_Y-170,w:125},{x:0,y:GROUND_Y-255,w:150},{x:240,y:GROUND_Y-255,w:150},{x:80,y:GROUND_Y-340,w:230},{x:100,y:GROUND_Y-130,w:110,moving:true,moveRange:120,moveSpeed:45}],
+  4:[{x:0,y:GROUND_Y-90,w:155},{x:235,y:GROUND_Y-90,w:155},{x:30,y:GROUND_Y-180,w:330},{x:70,y:GROUND_Y-270,w:250}],
 };
 
 // ── Weapon ───────────────────────────────────────────
 const WEAPON_CHARGE_MS=1500,PROJ_SPEED=500;
 const PROJ_W=14,PROJ_H=14,PROJ_DMG_NORMAL=1,PROJ_DMG_CHARGE=3;
-const PROJ_CHARGE_W=24,PROJ_CHARGE_H=24,PROJ_COOLDOWN_MS=400;
+const PROJ_CHARGE_W=24,PROJ_CHARGE_H=24,PROJ_COOLDOWN_MS=200;
 
 // ── Enemy Types (width ≈ player 52px) ────────────────
 const ENEMY={
@@ -99,14 +99,8 @@ const STAGE_ITEMS={
   3:{coin:'🍦',special:'🎂'},4:{coin:'⭐',special:'✨'},
 };
 
-const POWERUP_TYPES={
-  SPEED: {key:'speed', emoji:'⚡',label:'Speed!', duration:10000,imgKey:'power_up'},
-  SHIELD:{key:'shield',emoji:'🛡️',label:'Shield!',duration:0,    imgKey:'power_up'},
-  TRIPLE:{key:'triple',emoji:'🔱',label:'Triple!',duration:12000,imgKey:'power_up'},
-  HEAL:  {key:'heal',  emoji:'💖',label:'Heal!',  duration:0,    imgKey:'power_up'},
-  BOMB:  {key:'bomb',  emoji:'💣',label:'Bomb!',  duration:0,    imgKey:'power_up'},
-  MAGNET:{key:'magnet', emoji:'🧲',label:'Magnet!',duration:10000,imgKey:'power_up'},
-};
+// ── Power-ups (disabled) ─────────────────────────────
+const POWERUP_TYPES={};
 
 const COMBO_TIMEOUT_MS=2000, COMBO_MAX=8;
 const STAGE_CLEAR_BONUS=500, TIME_BONUS_PER_S=10;

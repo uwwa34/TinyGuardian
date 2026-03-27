@@ -224,11 +224,7 @@ class Game {
       if (!item.alive) continue;
       if (this._aabb(pH, item.getHitbox())) {
         item.alive = false;
-        if (item.isPowerup) {
-          this.player.applyPowerup(item.powerupKey, this);
-          this.hud.addNotification(POWERUP_TYPES[item.powerupKey].label);
-          this.playSfx('powerup');
-        } else if (item.healsHp) {
+        if (item.healsHp) {
           if (this.player.hp < this.player.maxHp) {
             this.player.hp++;
             this.hud.addComboPopup('+1 HP', item.x, item.y, COL.HEART_ON);
@@ -267,7 +263,8 @@ class Game {
     this.player.kills++;
     this.hud.addComboPopup('+' + pts + ' BOSS!', this.boss.x + this.boss.w/2, this.boss.y, COL.GOLD);
     this._spawnParticles(this.boss.x + this.boss.w/2, this.boss.y + this.boss.h/2, COL.GOLD, 20);
-    this.itemManager.spawnRandomPowerup(this.boss.x + this.boss.w/2, this.boss.y);
+    this.itemManager.spawnItem('HEART', this.boss.x + this.boss.w/2 - 15, this.boss.y);
+    this.itemManager.spawnItem('HEART', this.boss.x + this.boss.w/2 + 15, this.boss.y);
     this.boss = null;
   }
 
@@ -337,13 +334,7 @@ class Game {
   }
 
   spawnProjectile(x, y, dir, charged, angleY) {
-    if (this.player.powerups.triple) {
-      this.projManager.addPlayerBullet(x, y, dir, charged, 0);
-      this.projManager.addPlayerBullet(x, y-8, dir, charged, -0.25);
-      this.projManager.addPlayerBullet(x, y+8, dir, charged, 0.25);
-    } else {
-      this.projManager.addPlayerBullet(x, y, dir, charged, angleY);
-    }
+    this.projManager.addPlayerBullet(x, y, dir, charged, angleY);
   }
 
   bombAllEnemies() {
