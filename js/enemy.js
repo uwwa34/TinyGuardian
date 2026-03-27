@@ -100,12 +100,43 @@ class EnemyUnit {
   draw(ctx, images) {
     if (!this.alive) return;
     ctx.save();
+
+    // Walk animation variables
+    let bobY = 0, leanAngle = 0;
+    const t = Date.now() / 1000;
+    if (this.aiType === 'ground' && this.grounded) {
+      bobY = Math.sin(t * this.speed * 0.08) * 3;
+      leanAngle = Math.sin(t * this.speed * 0.08) * 0.07 * this.facing;
+    } else if (this.aiType === 'fly') {
+      // Gentle sway for flying
+      leanAngle = Math.sin(t * 2.5) * 0.1;
+    } else if (this.aiType === 'bounce') {
+      // Squash/stretch when moving
+      const squash = this.vy > 0 ? 0.9 : (this.vy < -100 ? 1.15 : 1.0);
+      // Applied via scale below
+      bobY = 0;
+    }
+
     if (this.dying) {
       ctx.globalAlpha = this.dieTimer/0.3;
       const s = 1+(1-this.dieTimer/0.3)*0.5;
       ctx.translate(this.x+this.w/2, this.y+this.h/2); ctx.scale(s,s); ctx.translate(-this.w/2,-this.h/2);
     } else {
-      ctx.translate(this.x, this.y);
+      ctx.translate(this.x, this.y + bobY);
+      // Lean
+      if (leanAngle !== 0) {
+        ctx.translate(this.w/2, this.h);
+        ctx.rotate(leanAngle);
+        ctx.translate(-this.w/2, -this.h);
+      }
+      // Squash/stretch for bounce type
+      if (this.aiType === 'bounce') {
+        const sy = this.vy > 100 ? 0.85 : (this.vy < -100 ? 1.15 : 1.0);
+        const sx = this.vy > 100 ? 1.15 : (this.vy < -100 ? 0.85 : 1.0);
+        ctx.translate(this.w/2, this.h);
+        ctx.scale(sx, sy);
+        ctx.translate(-this.w/2, -this.h);
+      }
     }
 
     // Try image first

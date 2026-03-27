@@ -33,23 +33,21 @@ class HUD {
 
     const y1 = 20;
 
-    // Hearts — draw as shapes for reliable rendering
+    // Hearts — 10 hearts fit in ~180px
     for (let i = 0; i < player.maxHp; i++) {
-      const hx = 10 + i * 21;
+      const hx = 8 + i * 18;
       const hy = y1;
       if (i < player.hp) {
-        // Full heart — red
         ctx.fillStyle = COL.HEART_ON;
-        this._drawHeart(ctx, hx, hy, 8);
+        this._drawHeart(ctx, hx, hy, 6.5);
         ctx.fill();
       } else {
-        // Empty heart — outline only
         ctx.fillStyle = '#FFE0B2';
-        this._drawHeart(ctx, hx, hy, 8);
+        this._drawHeart(ctx, hx, hy, 6.5);
         ctx.fill();
         ctx.strokeStyle = '#FFCC80';
         ctx.lineWidth = 1;
-        this._drawHeart(ctx, hx, hy, 8);
+        this._drawHeart(ctx, hx, hy, 6.5);
         ctx.stroke();
       }
     }

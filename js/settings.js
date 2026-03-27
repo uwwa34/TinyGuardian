@@ -31,7 +31,7 @@ const FONT={MAIN:'"Fredoka One","Segoe UI Emoji",cursive',BODY:'"Nunito","Segoe 
 const GRAVITY=1500, JUMP_VEL=-620, JUMP_VEL_MIN=-340, JUMP_HOLD_MS=180;
 
 // ── Player ───────────────────────────────────────────
-const PLAYER_W=52, PLAYER_H=60, PLAYER_SPEED=180, PLAYER_HP=5, INVINCIBLE_MS=1500;
+const PLAYER_W=52, PLAYER_H=60, PLAYER_SPEED=180, PLAYER_HP=10, INVINCIBLE_MS=1500;
 
 // ── Play Area ────────────────────────────────────────
 const HUD_H=64, JOYPAD_H=140;
@@ -51,16 +51,16 @@ const WEAPON_CHARGE_MS=1500,PROJ_SPEED=500;
 const PROJ_W=14,PROJ_H=14,PROJ_DMG_NORMAL=1,PROJ_DMG_CHARGE=3;
 const PROJ_CHARGE_W=24,PROJ_CHARGE_H=24,PROJ_COOLDOWN_MS=400;
 
-// ── Enemy Types ──────────────────────────────────────
+// ── Enemy Types (width ≈ player 52px) ────────────────
 const ENEMY={
-  ERASER :{key:'eraser', emoji:'🟥',w:36,h:36,speed:90, points:100,type:'ground',color:'#EF5350',imgKey:'enemy_ground'},
-  PENCIL :{key:'pencil', emoji:'✏️',w:32,h:38,speed:70, points:150,type:'fly',   color:'#FFA726',imgKey:'enemy_air'},
-  CLOWN  :{key:'clown',  emoji:'🤡',w:40,h:44,speed:100,points:120,type:'ground',color:'#AB47BC',imgKey:'enemy_ground'},
-  BALLOON:{key:'balloon',emoji:'🎈',w:32,h:40,speed:65, points:150,type:'fly',   color:'#EF5350',imgKey:'enemy_air'},
-  BOOMER :{key:'boomer', emoji:'🪃',w:38,h:40,speed:120,points:200,type:'ground',color:'#42A5F5',imgKey:'enemy_ground',shoots:true},
-  CANDY  :{key:'candy',  emoji:'🍭',w:36,h:36,speed:110,points:120,type:'ground',color:'#EC407A',imgKey:'enemy_ground'},
-  COOKIE :{key:'cookie', emoji:'🍪',w:34,h:34,speed:85, points:180,type:'fly',   color:'#8D6E63',imgKey:'enemy_air'},
-  JELLY  :{key:'jelly',  emoji:'🟢',w:36,h:36,speed:80, points:150,type:'bounce',color:'#66BB6A',imgKey:'enemy_ground'},
+  ERASER :{key:'eraser', emoji:'🟥',w:50,h:50,speed:90, points:100,type:'ground',color:'#EF5350',imgKey:'enemy_ground'},
+  PENCIL :{key:'pencil', emoji:'✏️',w:46,h:54,speed:70, points:150,type:'fly',   color:'#FFA726',imgKey:'enemy_air'},
+  CLOWN  :{key:'clown',  emoji:'🤡',w:52,h:56,speed:100,points:120,type:'ground',color:'#AB47BC',imgKey:'enemy_ground'},
+  BALLOON:{key:'balloon',emoji:'🎈',w:44,h:52,speed:65, points:150,type:'fly',   color:'#EF5350',imgKey:'enemy_air'},
+  BOOMER :{key:'boomer', emoji:'🪃',w:50,h:52,speed:120,points:200,type:'ground',color:'#42A5F5',imgKey:'enemy_ground',shoots:true},
+  CANDY  :{key:'candy',  emoji:'🍭',w:50,h:50,speed:110,points:120,type:'ground',color:'#EC407A',imgKey:'enemy_ground'},
+  COOKIE :{key:'cookie', emoji:'🍪',w:46,h:46,speed:85, points:180,type:'fly',   color:'#8D6E63',imgKey:'enemy_air'},
+  JELLY  :{key:'jelly',  emoji:'🟢',w:50,h:50,speed:80, points:150,type:'bounce',color:'#66BB6A',imgKey:'enemy_ground'},
 };
 
 const ANGRY_TIME_MS=20000, ANGRY_SPEED_MULT=1.6;
@@ -74,9 +74,9 @@ const STAGE_WAVES={
 
 const STAGE_TIME={1:90,2:90,3:90,4:120};
 
-const MINIBOSS={name:'คัพเค้กยักษ์',emoji:'🧁',w:72,h:72,hp:8,speed:110,points:800,angryHp:3,angrySpeed:160,shootCount:3,angryShootCount:5,color:'#F8BBD0',angryColor:'#EF5350'};
+const MINIBOSS={name:'คัพเค้กยักษ์',emoji:'🧁',w:96,h:96,hp:8,speed:110,points:800,angryHp:3,angrySpeed:160,shootCount:3,angryShootCount:5,color:'#F8BBD0',angryColor:'#EF5350'};
 
-const BOSS={name:'จอมวายร้ายจิ๋ว',emoji:'👿',w:88,h:88,hp:15,speed:75,points:2000,
+const BOSS={name:'จอมวายร้ายจิ๋ว',emoji:'👿',w:110,h:110,hp:15,speed:75,points:2000,
   phase2hp:10,phase3hp:5,
   p1FoodCount:3,p1SpawnInterval:8000,p1SpawnCount:1,
   p2FoodCount:4,p2SpawnInterval:8000,p2SpawnCount:2,p2Speed:110,

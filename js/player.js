@@ -315,18 +315,32 @@ class Player {
     const dy = this.y + (this.h - dh);
 
     ctx.save();
+
+    // Walk animation — bob body up/down + slight lean
+    let bobY = 0, leanAngle = 0;
+    if (this.state === 'walk' && this.grounded) {
+      bobY = Math.sin(this.animFrame * Math.PI * 0.5) * 3.5;
+      leanAngle = Math.sin(this.animFrame * Math.PI * 0.5) * 0.06 * this.facing;
+    }
+
+    const cx = dx + dw / 2, cy = dy + dh + bobY;
+
     // Flip if facing left
     if (this.facing < 0) {
-      ctx.translate(dx + dw, dy);
+      ctx.translate(dx + dw, dy + bobY);
       ctx.scale(-1, 1);
-      ctx.translate(0, 0);
     } else {
-      ctx.translate(dx, dy);
+      ctx.translate(dx, dy + bobY);
+    }
+    // Lean
+    if (leanAngle !== 0) {
+      ctx.translate(dw / 2, dh);
+      ctx.rotate(leanAngle);
+      ctx.translate(-dw / 2, -dh);
     }
 
     if (images && images.player) {
       const img = images.player;
-      // If image is much wider than tall → likely sprite sheet, crop first frame
       const aspect = img.width / img.height;
       if (aspect > 1.5) {
         const frameW = Math.floor(img.height * (PLAYER_W / PLAYER_H));
@@ -443,17 +457,19 @@ class Player {
     ctx.closePath();
     ctx.fill();
 
-    // Walk animation — bob feet
+    // Walk animation — legs stride
     if (this.state === 'walk') {
-      const bobL = Math.sin(this.animFrame * Math.PI / 2) * 3;
-      const bobR = Math.cos(this.animFrame * Math.PI / 2) * 3;
+      const stride = Math.sin(this.animFrame * Math.PI / 2);
+      const legW = 9, legH = 8;
       ctx.fillStyle = COL.COCOA;
-      ctx.fillRect(dw * 0.25, dh - 2 + bobL, 8, 4);
-      ctx.fillRect(dw * 0.6, dh - 2 + bobR, 8, 4);
+      // Left leg
+      ctx.fillRect(dw * 0.22 + stride * 4, dh - legH + 1, legW, legH);
+      // Right leg
+      ctx.fillRect(dw * 0.58 - stride * 4, dh - legH + 1, legW, legH);
     } else {
       ctx.fillStyle = COL.COCOA;
-      ctx.fillRect(dw * 0.25, dh - 2, 8, 4);
-      ctx.fillRect(dw * 0.6, dh - 2, 8, 4);
+      ctx.fillRect(dw * 0.22, dh - 6, 9, 7);
+      ctx.fillRect(dw * 0.58, dh - 6, 9, 7);
     }
   }
 
