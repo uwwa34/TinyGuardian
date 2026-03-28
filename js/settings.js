@@ -62,7 +62,7 @@ const PLAT_PRESETS={
   4:[
     {x:0,y:GROUND_Y-90,w:140},{x:250,y:GROUND_Y-90,w:140},
     {x:0,y:GROUND_Y-180,w:140},{x:250,y:GROUND_Y-180,w:140},
-    {x:0,y:GROUND_Y-270,w:390},
+    {x:0,y:GROUND_Y-270,w:140},{x:250,y:GROUND_Y-270,w:140},
   ],
 };
 
