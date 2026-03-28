@@ -43,19 +43,24 @@ class ItemUnit {
       for (const p of surfaces) {
         if (this.vy >= 0) {
           const feetY = this.y + this.h;
-          if (feetY >= p.y && feetY <= p.y+12 && this.x+this.w > p.x && this.x < p.x+p.w) {
+          if (feetY >= p.y && feetY <= p.y+30 && this.x+this.w > p.x && this.x < p.x+p.w) {
             this.y = p.y - this.h; this.vy = 0; this.grounded = true; break;
           }
         }
       }
+      // Safety clamp — never fall below ground
+      if (this.y + this.h > GROUND_Y) {
+        this.y = GROUND_Y - this.h; this.vy = 0; this.grounded = true;
+      }
     }
-    if (player.powerups.magnet) {
+    if (player.powerups && player.powerups.magnet) {
       const dx = (player.x+player.w/2)-(this.x+this.w/2);
       const dy = (player.y+player.h/2)-(this.y+this.h/2);
       const dist = Math.sqrt(dx*dx+dy*dy);
       if (dist < 150 && dist > 0) { const pull=300*dt; this.x+=(dx/dist)*pull; this.y+=(dy/dist)*pull; }
     }
-    if (this.y > PLAY_BOTTOM+50) this.alive = false;
+    // Only remove if off screen horizontally
+    if (this.x < -100 || this.x > WIDTH+100) this.alive = false;
   }
 
   draw(ctx, images) {
