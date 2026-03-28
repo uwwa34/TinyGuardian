@@ -81,18 +81,14 @@ class BossUnit {
     }
 
     // Execute current state
-    // Always face player during movement
-    if (this.state === 'move' || this.state === 'attack') {
-      this.facing = player.x + player.w/2 > this.x + this.w/2 ? 1 : -1;
-    }
     if (this.state === 'move') {
+      this.facing = player.x + player.w/2 > this.x + this.w/2 ? 1 : -1;
       this.x += this.currentSpeed * this.facing * dt;
     } else if (this.state === 'attack') {
-      // Slow movement during attack (50% speed)
-      this.x += this.currentSpeed * 0.5 * this.facing * dt;
+      // Stand still during attack
     } else if (this.state === 'jump') {
-      // Move horizontally while jumping toward player
-      this.x += this.currentSpeed * 0.7 * this.facing * dt;
+      // Gentle drift while jumping
+      this.x += this.currentSpeed * 0.3 * this.facing * dt;
     }
 
     // Apply gravity
@@ -142,52 +138,37 @@ class BossUnit {
     const actions = this.isFinal ? this._bossActions(player) : this._miniBossActions(player);
     const action = actions[Math.floor(Math.random() * actions.length)];
 
-    // Always face player
+    // Face player
     this.facing = player.x + player.w/2 > this.x + this.w/2 ? 1 : -1;
 
-    if (action === 'chase') {
-      // Run toward player aggressively
+    if (action === 'move') {
       this.state = 'move';
-      this.stateTimer = 800 + Math.random() * 600;
-    } else if (action === 'move') {
-      this.state = 'move';
-      this.stateTimer = 1200 + Math.random() * 800;
+      this.stateTimer = 1200 + Math.random() * 1000;
     } else if (action === 'jump') {
       this.state = 'jump';
-      // Jump toward player — higher if player is above
-      const heightDiff = this.y - player.y;
-      this.vy = -650 - Math.min(heightDiff * 0.5, 150) - (this.isAngry ? 100 : 0);
+      this.vy = -600 - (this.isAngry ? 80 : 0);
       this.grounded = false;
-      this.x += this.facing * 50;
-      this.stateTimer = 600;
+      this.stateTimer = 800;
     } else if (action === 'attack') {
       this.state = 'attack';
       this.shakeTimer = 300;
       this._doAttack(player, game);
-      // Can still move during attack
-      this.stateTimer = this.isAngry ? 800 : 1500;
+      this.stateTimer = this.isAngry ? 1200 : 1800;
     } else {
       this.state = 'idle';
-      this.stateTimer = 400 + Math.random() * 300; // Very short idle
+      this.stateTimer = 600 + Math.random() * 500;
     }
   }
 
   _miniBossActions(player) {
-    const dist = Math.abs(player.x - this.x);
-    if (this.isAngry) return ['chase','attack','chase','jump','attack'];
-    if (dist < 100) return ['jump','attack','move','attack'];
-    return ['move','attack','jump','move','chase'];
+    if (this.isAngry) return ['move','attack','jump','attack','move','idle'];
+    return ['move','attack','idle','jump','move','idle'];
   }
 
   _bossActions(player) {
-    const dist = Math.abs(player.x - this.x);
-    if (this.phase === 3) return ['chase','attack','jump','chase','attack','jump'];
-    if (this.phase === 2) {
-      if (dist < 120) return ['jump','attack','chase','attack'];
-      return ['chase','jump','attack','move','attack'];
-    }
-    // Phase 1 — still active but less aggressive
-    return ['move','attack','move','jump','attack','idle'];
+    if (this.phase === 3) return ['move','attack','jump','attack','move','jump'];
+    if (this.phase === 2) return ['move','jump','attack','idle','move','attack'];
+    return ['idle','attack','move','idle','move','attack'];
   }
 
   _doAttack(player, game) {
