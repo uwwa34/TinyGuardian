@@ -228,138 +228,86 @@ class BossUnit {
     if (!this.alive) return;
     ctx.save();
 
-    const shakeX = this.shakeTimer > 0 ? (Math.random() - 0.5) * 6 : 0;
-    const shakeY = this.shakeTimer > 0 ? (Math.random() - 0.5) * 4 : 0;
-
+    const shakeX = this.shakeTimer > 0 ? (Math.random()-0.5)*6 : 0;
+    const shakeY = this.shakeTimer > 0 ? (Math.random()-0.5)*4 : 0;
     let dx = this.x + shakeX;
     let dy = this.y + shakeY;
 
+    // Walk bob animation
+    const t = Date.now()/1000;
+    let bobY = 0, lean = 0;
+    if (!this.dying && this.grounded && this.state === 'move') {
+      bobY = Math.sin(t * this.currentSpeed * 0.06) * 4;
+      lean = Math.sin(t * this.currentSpeed * 0.06) * 0.05 * this.facing;
+    }
+
+    // Flash = blink via globalAlpha (no rect!)
+    if (this.flashTimer > 0 && Math.floor(this.flashTimer/50)%2===0) {
+      ctx.globalAlpha = 0.3;
+    }
+    // Angry = periodic blink (no rect!)
+    if (this.isAngry && Math.floor(t*5)%3===0) {
+      ctx.globalAlpha *= 0.4;
+    }
+
     if (this.dying) {
       ctx.globalAlpha = this.dieTimer;
-      const scale = 1 + (1 - this.dieTimer) * 0.8;
-      ctx.translate(dx + this.w / 2, dy + this.h / 2);
-      ctx.scale(scale, scale);
-      ctx.translate(-this.w / 2, -this.h / 2);
-      dx = 0; dy = 0;
+      const scale = 1+(1-this.dieTimer)*0.8;
+      ctx.translate(dx+this.w/2, dy+this.h/2);
+      ctx.scale(scale,scale);
+      ctx.translate(-this.w/2,-this.h/2);
+      dx=0; dy=0;
+    } else {
+      // Apply bob + lean
+      ctx.translate(dx, dy + bobY);
+      if (lean) { ctx.translate(this.w/2,this.h); ctx.rotate(lean); ctx.translate(-this.w/2,-this.h); }
+      dx=0; dy=0;
     }
 
-    // Try image first
+    // Try image
     const imgKey = this.isFinal ? 'boss' : 'miniboss';
-    const hasImg = images && images[imgKey];
-
-    // Flash: blink entire character via globalAlpha
-    if (this.flashTimer > 0 && Math.floor(this.flashTimer / 50) % 2 === 0) {
-      ctx.globalAlpha = (this.dying ? this.dieTimer : 1) * 0.3;
-    }
-
-    if (hasImg) {
+    if (images && images[imgKey]) {
       const img = images[imgKey];
       if (this.facing < 0 && !this.dying) {
-        ctx.translate(dx + this.w, dy); ctx.scale(-1, 1);
-        ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, this.w, this.h);
-      } else {
-        ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, this.w, this.h);
+        ctx.translate(this.w,0); ctx.scale(-1,1);
       }
-      if (this.isAngry) { ctx.globalAlpha = 0.2; ctx.fillStyle = '#EF5350'; ctx.fillRect(this.dying?0:dx, this.dying?0:dy, this.w, this.h); }
+      ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, this.w, this.h);
     } else {
-    // Fallback: programmatic body
-    const col = this.flashTimer > 0 ? '#FFF' :
-                this.isAngry ? (this.cfg.angryColor || '#EF5350') :
-                (this.cfg.color || '#9575CD');
-    ctx.fillStyle = col;
-    const r = 12;
-    ctx.beginPath();
-    ctx.moveTo(dx + r, dy);
-    ctx.lineTo(dx + this.w - r, dy);
-    ctx.quadraticCurveTo(dx + this.w, dy, dx + this.w, dy + r);
-    ctx.lineTo(dx + this.w, dy + this.h - r);
-    ctx.quadraticCurveTo(dx + this.w, dy + this.h, dx + this.w - r, dy + this.h);
-    ctx.lineTo(dx + r, dy + this.h);
-    ctx.quadraticCurveTo(dx, dy + this.h, dx, dy + this.h - r);
-    ctx.lineTo(dx, dy + r);
-    ctx.quadraticCurveTo(dx, dy, dx + r, dy);
-    ctx.fill();
-
-    // Outline
-    ctx.strokeStyle = COL.COCOA;
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    // Eyes
-    const eyeY = dy + this.h * 0.3;
-    const eyeS = this.w * 0.12;
-    ctx.fillStyle = '#FFF';
-    ctx.beginPath();
-    ctx.arc(dx + this.w * 0.35, eyeY, eyeS + 2, 0, Math.PI * 2);
-    ctx.arc(dx + this.w * 0.65, eyeY, eyeS + 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = this.isAngry ? '#C62828' : COL.COCOA;
-    ctx.beginPath();
-    ctx.arc(dx + this.w * 0.35, eyeY, eyeS, 0, Math.PI * 2);
-    ctx.arc(dx + this.w * 0.65, eyeY, eyeS, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Angry eyebrows
-    if (this.isAngry) {
-      ctx.strokeStyle = COL.COCOA;
-      ctx.lineWidth = 3;
+      // Fallback programmatic
+      const col = this.flashTimer > 0 ? '#FFF' :
+                  this.isAngry ? (this.cfg.angryColor||'#EF5350') :
+                  (this.cfg.color||'#9575CD');
+      ctx.fillStyle = col;
+      const r=12;
       ctx.beginPath();
-      ctx.moveTo(dx + this.w * 0.2, eyeY - eyeS - 6);
-      ctx.lineTo(dx + this.w * 0.42, eyeY - eyeS);
-      ctx.moveTo(dx + this.w * 0.8, eyeY - eyeS - 6);
-      ctx.lineTo(dx + this.w * 0.58, eyeY - eyeS);
-      ctx.stroke();
+      ctx.moveTo(dx+r,dy);ctx.lineTo(dx+this.w-r,dy);ctx.quadraticCurveTo(dx+this.w,dy,dx+this.w,dy+r);
+      ctx.lineTo(dx+this.w,dy+this.h-r);ctx.quadraticCurveTo(dx+this.w,dy+this.h,dx+this.w-r,dy+this.h);
+      ctx.lineTo(dx+r,dy+this.h);ctx.quadraticCurveTo(dx,dy+this.h,dx,dy+this.h-r);
+      ctx.lineTo(dx,dy+r);ctx.quadraticCurveTo(dx,dy,dx+r,dy);ctx.fill();
+      ctx.strokeStyle=COL.COCOA;ctx.lineWidth=2.5;ctx.stroke();
+      // Eyes
+      const eyeY=dy+this.h*0.3, eyeS=this.w*0.12;
+      ctx.fillStyle='#FFF';ctx.beginPath();ctx.arc(dx+this.w*0.35,eyeY,eyeS+2,0,Math.PI*2);ctx.arc(dx+this.w*0.65,eyeY,eyeS+2,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=this.isAngry?'#C62828':COL.COCOA;ctx.beginPath();ctx.arc(dx+this.w*0.35,eyeY,eyeS,0,Math.PI*2);ctx.arc(dx+this.w*0.65,eyeY,eyeS,0,Math.PI*2);ctx.fill();
+      if(this.isAngry){ctx.strokeStyle=COL.COCOA;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(dx+this.w*0.2,eyeY-eyeS-6);ctx.lineTo(dx+this.w*0.42,eyeY-eyeS);ctx.moveTo(dx+this.w*0.8,eyeY-eyeS-6);ctx.lineTo(dx+this.w*0.58,eyeY-eyeS);ctx.stroke();}
+      if(this.isFinal){ctx.fillStyle='#FFD700';const cw=this.w*0.5,ch=14,cx2=dx+(this.w-cw)/2,cy2=dy-ch+4;ctx.beginPath();ctx.moveTo(cx2,cy2+ch);ctx.lineTo(cx2,cy2+4);ctx.lineTo(cx2+cw*0.25,cy2+ch*0.5);ctx.lineTo(cx2+cw*0.5,cy2);ctx.lineTo(cx2+cw*0.75,cy2+ch*0.5);ctx.lineTo(cx2+cw,cy2+4);ctx.lineTo(cx2+cw,cy2+ch);ctx.closePath();ctx.fill();}
+      ctx.font=(this.w*0.35)+'px '+FONT.BODY;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(this.cfg.emoji,dx+this.w/2,dy+this.h*0.65);
     }
-
-    // Crown (final boss)
-    if (this.isFinal) {
-      ctx.fillStyle = '#FFD700';
-      const cw = this.w * 0.5;
-      const ch = 14;
-      const cx = dx + (this.w - cw) / 2;
-      const cy2 = dy - ch + 4;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy2 + ch);
-      ctx.lineTo(cx, cy2 + 4);
-      ctx.lineTo(cx + cw * 0.25, cy2 + ch * 0.5);
-      ctx.lineTo(cx + cw * 0.5, cy2);
-      ctx.lineTo(cx + cw * 0.75, cy2 + ch * 0.5);
-      ctx.lineTo(cx + cw, cy2 + 4);
-      ctx.lineTo(cx + cw, cy2 + ch);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = '#F9A825';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
-    // Emoji (fallback only)
-    ctx.font = (this.w * 0.35) + 'px ' + FONT.BODY;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(this.cfg.emoji, dx + this.w / 2, dy + this.h * 0.65);
-    } // end fallback else
-
     ctx.restore();
 
-    // HP bar — drawn OUTSIDE save/restore using world coordinates
+    // HP bar — OUTSIDE save/restore, world coords, no transforms
     if (!this.dying) {
-      const barW = this.w + 10;
-      const barH = 7;
-      let barX = this.x + (this.w - barW) / 2;
-      barX = Math.max(2, Math.min(barX, WIDTH - barW - 2));
-      const barY = Math.max(PLAY_TOP + 2, this.y - 16);
-      this.ctx_temp = ctx; // temp ref
-      ctx.save();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.fillRect(barX, barY, barW, barH);
-      const pct = this.hp / this.maxHp;
-      ctx.fillStyle = pct > 0.3 ? COL.BOSS_HP2 : COL.BOSS_HP1;
-      ctx.fillRect(barX, barY, barW * pct, barH);
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(barX, barY, barW, barH);
+      const barW=this.w+10, barH=7;
+      let barX=this.x+(this.w-barW)/2;
+      barX=Math.max(2,Math.min(barX,WIDTH-barW-2));
+      const barY=Math.max(PLAY_TOP+2,this.y-18);
+      ctx.save(); ctx.globalAlpha=1;
+      ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(barX,barY,barW,barH);
+      const pct=this.hp/this.maxHp;
+      ctx.fillStyle=pct>0.3?COL.BOSS_HP2:COL.BOSS_HP1;
+      ctx.fillRect(barX,barY,barW*pct,barH);
+      ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=1;ctx.strokeRect(barX,barY,barW,barH);
       ctx.restore();
     }
   }

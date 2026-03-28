@@ -310,7 +310,7 @@ class Game {
       this.hud.addNotification('⚠️ ' + BOSS.name + ' มาแล้ว!');
       this.playSfx('boss_warning');
     } else {
-      this.enemyManager.spawnWave(waveData, this.world);
+      this.enemyManager.spawnWave(waveData, this.world, this.player);
       this.hud.addNotification('Wave ' + this.currentWave + '!');
     }
   }

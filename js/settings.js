@@ -60,9 +60,9 @@ const PLAT_PRESETS={
     {x:95,y:GROUND_Y-130,w:110,moving:true,moveRange:120,moveSpeed:45},
   ],
   4:[
-    {x:0,y:GROUND_Y-90,w:155},{x:235,y:GROUND_Y-90,w:155},
-    {x:0,y:GROUND_Y-180,w:390},
-    {x:65,y:GROUND_Y-270,w:260},
+    {x:0,y:GROUND_Y-90,w:140},{x:250,y:GROUND_Y-90,w:140},
+    {x:0,y:GROUND_Y-180,w:140},{x:250,y:GROUND_Y-180,w:140},
+    {x:0,y:GROUND_Y-270,w:390},
   ],
 };
 
@@ -94,13 +94,13 @@ const STAGE_WAVES={
 
 const STAGE_TIME={1:90,2:90,3:90,4:120};
 
-const MINIBOSS={name:'คัพเค้กยักษ์',emoji:'🧁',w:96,h:96,hp:8,speed:110,points:800,angryHp:3,angrySpeed:160,shootCount:3,angryShootCount:5,color:'#F8BBD0',angryColor:'#EF5350'};
+const MINIBOSS={name:'คัพเค้กยักษ์',emoji:'🧁',w:96,h:96,hp:8,speed:150,points:800,angryHp:3,angrySpeed:210,shootCount:3,angryShootCount:5,color:'#F8BBD0',angryColor:'#EF5350'};
 
-const BOSS={name:'จอมวายร้ายจิ๋ว',emoji:'👿',w:110,h:110,hp:15,speed:75,points:2000,
+const BOSS={name:'จอมวายร้ายจิ๋ว',emoji:'👿',w:110,h:110,hp:15,speed:110,points:2000,
   phase2hp:10,phase3hp:5,
   p1FoodCount:3,p1SpawnInterval:8000,p1SpawnCount:1,
-  p2FoodCount:4,p2SpawnInterval:8000,p2SpawnCount:2,p2Speed:110,
-  p3FoodCount:5,p3SpawnInterval:5000,p3SpawnCount:2,p3Speed:150,
+  p2FoodCount:4,p2SpawnInterval:8000,p2SpawnCount:2,p2Speed:150,
+  p3FoodCount:5,p3SpawnInterval:5000,p3SpawnCount:2,p3Speed:200,
   color:'#9575CD',angryColor:'#EF5350'};
 
 const BOSS_FOODS=[{emoji:'🍔',w:24,h:24},{emoji:'🍕',w:24,h:24},{emoji:'🍩',w:24,h:24}];
