@@ -196,8 +196,7 @@ class Game {
       if (!eb.alive) continue;
       if (this._aabb(pH, eb.getHitbox())) {
         eb.alive = false;
-        if (eb.type === 'food') this.player.getFat(this);
-        else this.player.takeDamage(this);
+        this.player.takeDamage(this);
       }
     }
 

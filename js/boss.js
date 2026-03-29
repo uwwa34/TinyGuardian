@@ -124,9 +124,9 @@ class BossUnit {
         }
       }
 
-      // Drop health food occasionally (final boss phase 2+)
-      if (this.isFinal && this.phase >= 2 && Math.random() < 0.01 * dt) {
-        game.itemManager.spawnItem('FOOD', this.x + this.w / 2, this.y + this.h);
+      // Drop heart occasionally (final boss phase 2+)
+      if (this.isFinal && this.phase >= 2 && Math.random() < 0.008 * dt) {
+        game.itemManager.spawnItem('HEART', this.x + this.w / 2, this.y + this.h);
       }
     }
 
@@ -183,15 +183,19 @@ class BossUnit {
 
     const cx = this.x + this.w / 2;
     const cy = this.y + this.h * 0.3;
-    const type = this.isFinal ? 'food' : 'normal';
+
+    // Aim toward player
+    const dx = (player.x + player.w/2) - cx;
+    const dy = (player.y + player.h/2) - cy;
+    const baseAngle = Math.atan2(dy, dx);
 
     for (let i = 0; i < count; i++) {
-      const spread = (i - (count - 1) / 2) * 0.4;
-      const spd = 120 + Math.random() * 80;
-      const vx = spread * spd + (Math.random() - 0.5) * 60;
-      // Food arcs up then falls; normal shoots sideways
-      const vy = type === 'food' ? -(150 + Math.random() * 100) : (Math.random() - 0.5) * spd;
-      game.projManager.addEnemyBullet(cx, cy, vx, vy, type);
+      const spread = (i - (count - 1) / 2) * 0.25;
+      const angle = baseAngle + spread;
+      const spd = 140 + Math.random() * 60;
+      const vx = Math.cos(angle) * spd;
+      const vy = Math.sin(angle) * spd;
+      game.projManager.addEnemyBullet(cx, cy, vx, vy, 'normal');
     }
   }
 
