@@ -255,20 +255,29 @@ class Game {
     if (!this.player2) return;
     if (this.net.isHost) {
       // Host: update P2 with peer input from Guest
+      // Detect jump edge: either queued or btnA edge
+      const btnANow = this.net.peerInput.btnA;
+      const jumpFromQueue = this.net.peerInput._jumpQueued;
+      const jumpFromEdge = btnANow && !this._prevP2BtnA_host;
+      this._prevP2BtnA_host = btnANow;
+
       const p2Input = {
         left: this.net.peerInput.left,
         right: this.net.peerInput.right,
-        btnA: this.net.peerInput.btnA,
+        btnA: btnANow,
         btnB: this.net.peerInput.btnB,
-        jumpPressed: this.net.peerInput.jumpPressed,
+        jumpPressed: jumpFromQueue || jumpFromEdge,
       };
+      // Consume jump queue
+      this.net.peerInput._jumpQueued = false;
+
       if (this.player2.hp > 0) {
         this.player2.update(dt, p2Input, this.world, this);
       }
-      // Send state to Guest (20fps)
+      // Send state to Guest (20fps) — include vy/grounded for smooth sync
       this.net.sendGameState({
-        p1: { x:this.player.x, y:this.player.y, hp:this.player.hp, facing:this.player.facing, state:this.player.state, score:this.player.score },
-        p2: { x:this.player2.x, y:this.player2.y, hp:this.player2.hp, facing:this.player2.facing, state:this.player2.state, score:this.player2.score },
+        p1: { x:this.player.x, y:this.player.y, vy:this.player.vy, hp:this.player.hp, facing:this.player.facing, state:this.player.state, score:this.player.score, grounded:this.player.grounded },
+        p2: { x:this.player2.x, y:this.player2.y, vy:this.player2.vy, hp:this.player2.hp, facing:this.player2.facing, state:this.player2.state, score:this.player2.score, grounded:this.player2.grounded },
         boss: this.boss ? { x:this.boss.x, y:this.boss.y, hp:this.boss.hp, alive:this.boss.alive } : null,
         timer: this.stageTimer,
       });
@@ -308,33 +317,42 @@ class Game {
 
       if (this.net.peerState) {
         const s = this.net.peerState;
-        // P1 (Host's player) — smooth lerp to network position
+        // P1 (Host's player) — smooth lerp
         if (s.p1) {
-          this.player.x += (s.p1.x - this.player.x) * 0.3;
-          this.player.y += (s.p1.y - this.player.y) * 0.3;
+          this.player.x += (s.p1.x - this.player.x) * 0.25;
+          this.player.y += (s.p1.y - this.player.y) * 0.25;
+          this.player.vy = s.p1.vy;
           this.player.hp = s.p1.hp;
           this.player.facing = s.p1.facing;
           this.player.state = s.p1.state;
           this.player.score = s.p1.score;
+          this.player.grounded = s.p1.grounded;
         }
-        // P2 (Guest's own player) — soft correction from Host authority
+        // P2 (Guest's own) — gentle correction, trust local physics
         if (s.p2) {
-          // Only correct if far off (>20px) — otherwise trust local prediction
           const dx = s.p2.x - this.player2.x;
           const dy = s.p2.y - this.player2.y;
-          if (Math.abs(dx) > 20) this.player2.x += dx * 0.4;
-          if (Math.abs(dy) > 20) this.player2.y += dy * 0.4;
+          // Gentle X correction
+          if (Math.abs(dx) > 8) this.player2.x += dx * 0.15;
+          // Y correction — stronger when grounded differs
+          if (s.p2.grounded && !this.player2.grounded) {
+            this.player2.y = s.p2.y;
+            this.player2.vy = 0;
+            this.player2.grounded = true;
+          } else if (Math.abs(dy) > 15) {
+            this.player2.y += dy * 0.2;
+          }
           this.player2.hp = s.p2.hp;
           this.player2.score = s.p2.score;
         }
         // Boss sync
         if (s.boss && this.boss) {
-          this.boss.x += (s.boss.x - this.boss.x) * 0.3;
-          this.boss.y += (s.boss.y - this.boss.y) * 0.3;
+          this.boss.x += (s.boss.x - this.boss.x) * 0.25;
+          this.boss.y += (s.boss.y - this.boss.y) * 0.25;
           this.boss.hp = s.boss.hp;
         }
         if (s.timer !== undefined) this.stageTimer = s.timer;
-        this.net.peerState = null; // consumed
+        this.net.peerState = null;
       }
     }
   }

@@ -152,7 +152,8 @@ class NetworkManager {
         this.peerInput.right = msg.right;
         this.peerInput.btnA = msg.btnA;
         this.peerInput.btnB = msg.btnB;
-        this.peerInput.jumpPressed = msg.jumpPressed;
+        // Queue jump: if guest says jumpPressed, keep it until Host consumes
+        if (msg.jumpPressed) this.peerInput._jumpQueued = true;
         break;
       case 'state':
         // Guest receives game state from host

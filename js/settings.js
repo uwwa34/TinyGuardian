@@ -131,6 +131,7 @@ const RANKING_KEY='tinyGuardian_ranking_v1', RANKING_MAX=10;
 // ── Asset Paths (match actual filenames) ─────────────
 const ASSET_IMAGES={
   player:       'assets/images/player.png',
+  player2:      'assets/images/player2.png',     // P2 image (optional, fallback to player+tint)
   background:   'assets/images/background.png',      // shared BG
   bg_stage1:    'assets/images/bg_stage1.png',        // optional per-stage BG
   bg_stage2:    'assets/images/bg_stage2.png',
@@ -171,4 +172,4 @@ const JBTN={
 
 // ── Co-op Server ─────────────────────────────────────
 // เปลี่ยน URL นี้หลัง deploy server บน Render.com
-const COOP_SERVER_URL = 'https://tiny-guardian-server-1.onrender.com' //'wss://tiny-guardian-server.onrender.com'; 
+const COOP_SERVER_URL = 'wss://tiny-guardian-server.onrender.com';

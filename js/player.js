@@ -345,8 +345,11 @@ class Player {
       ctx.translate(-dw / 2, -dh);
     }
 
-    if (images && images.player) {
-      const img = images.player;
+    // Choose image: P2 uses player2.png if available
+    const imgKey = this.isP2 ? 'player2' : 'player';
+    const img = images && (images[imgKey] || images.player);
+
+    if (img) {
       const aspect = img.width / img.height;
       if (aspect > 1.5) {
         const frameW = Math.floor(img.height * (PLAYER_W / PLAYER_H));
@@ -354,8 +357,8 @@ class Player {
       } else {
         ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, dw, dh);
       }
-      // P2 blue tint
-      if (this.isP2) {
+      // P2 blue tint (only when using shared player.png, not player2.png)
+      if (this.isP2 && !(images && images.player2)) {
         ctx.globalAlpha = 0.35;
         ctx.globalCompositeOperation = 'source-atop';
         ctx.fillStyle = '#42A5F5';
