@@ -15,7 +15,7 @@ class NetworkManager {
     this._reconnectTimer = null;
     // State sync
     this.lastSentState = 0;
-    this.sendInterval = 66; // ~15fps state sync
+    this.sendInterval = 50; // ~20fps state sync
     // Peer input (host receives guest input)
     this.peerInput = { left:false, right:false, btnA:false, btnB:false, jumpPressed:false };
     // Peer state (guest receives game state from host)

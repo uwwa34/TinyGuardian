@@ -184,7 +184,18 @@ class Game {
     this.stageTimer -= dt;
     if (this.stageTimer < 0) this.stageTimer = 0;
 
-    this.player.update(dt, inputForPlayer, this.world, this);
+    // In co-op Guest mode: joypad controls player2 locally
+    if (this.coopMode && this.net.isGuest) {
+      // Guest: update own player2 with local joypad (instant response)
+      if (this.player2 && this.player2.hp > 0) {
+        this.player2.update(dt, inputForPlayer, this.world, this);
+      }
+      // Don't update player1 locally — Host sends P1 state
+    } else {
+      // Solo or Host: update player1 with joypad
+      this.player.update(dt, inputForPlayer, this.world, this);
+    }
+
     this.world.update(dt);
     this.enemyManager.update(dt, this.world, this);
     this.projManager.update(dt);
@@ -243,7 +254,7 @@ class Game {
   _updateCoop(dt) {
     if (!this.player2) return;
     if (this.net.isHost) {
-      // Host: update P2 with peer input
+      // Host: update P2 with peer input from Guest
       const p2Input = {
         left: this.net.peerInput.left,
         right: this.net.peerInput.right,
@@ -254,16 +265,14 @@ class Game {
       if (this.player2.hp > 0) {
         this.player2.update(dt, p2Input, this.world, this);
       }
-      // Send state to guest
+      // Send state to Guest (20fps)
       this.net.sendGameState({
-        p1: { x:this.player.x, y:this.player.y, hp:this.player.hp, facing:this.player.facing, state:this.player.state, score:this.player.score, animFrame:this.player.animFrame },
-        p2: { x:this.player2.x, y:this.player2.y, hp:this.player2.hp, facing:this.player2.facing, state:this.player2.state, score:this.player2.score, animFrame:this.player2.animFrame },
-        enemies: this.enemyManager.enemies.map(e => ({ x:e.x, y:e.y, type:e.type, alive:e.alive, dying:e.dying, angry:e.angry, facing:e.facing })),
+        p1: { x:this.player.x, y:this.player.y, hp:this.player.hp, facing:this.player.facing, state:this.player.state, score:this.player.score },
+        p2: { x:this.player2.x, y:this.player2.y, hp:this.player2.hp, facing:this.player2.facing, state:this.player2.state, score:this.player2.score },
         boss: this.boss ? { x:this.boss.x, y:this.boss.y, hp:this.boss.hp, alive:this.boss.alive } : null,
-        stage: this.currentStage,
         timer: this.stageTimer,
       });
-      // P2 collision with enemies
+      // P2 collision with enemies/boss/bullets/items
       if (this.player2.hp > 0) {
         const p2H = this.player2.getHitbox();
         if (!this.player2.invincible) {
@@ -271,34 +280,61 @@ class Game {
             if (enemy.dying) continue;
             if (this._aabb(p2H, enemy.getHitbox())) { this.player2.takeDamage(this); break; }
           }
+          if (this.boss && !this.boss.dying) {
+            if (this._aabb(p2H, this.boss.getHitbox())) this.player2.takeDamage(this);
+          }
         }
-        if (this.boss && !this.boss.dying && !this.player2.invincible) {
-          if (this._aabb(p2H, this.boss.getHitbox())) this.player2.takeDamage(this);
-        }
-        // P2 enemy bullets
         for (const eb of this.projManager.enemyBullets) {
           if (!eb.alive) continue;
           if (this._aabb(p2H, eb.getHitbox())) { eb.alive = false; this.player2.takeDamage(this); }
         }
-        // P2 items
         for (const item of this.itemManager.items) {
           if (!item.alive) continue;
           if (this._aabb(p2H, item.getHitbox())) {
             item.alive = false;
-            if (item.healsHp) { if(this.player2.hp<this.player2.maxHp){this.player2.hp++;this.hud.addComboPopup('+1 HP',item.x,item.y,'#42A5F5');} }
+            if (item.healsHp) { if(this.player2.hp<this.player2.maxHp){this.player2.hp++;} }
             else if (!item.healsFat) { this.player2.score+=item.points; this.player2.itemsCollected++; }
           }
         }
       }
     } else if (this.net.isGuest) {
-      // Guest: send input, receive state
-      this.net.sendInput(this.input);
+      // Guest: send own input + apply Host sync smoothly
+      this.net.sendInput({
+        left: this.input.left, right: this.input.right,
+        btnA: this.input.btnA, btnB: this.input.btnB,
+        jumpPressed: this.input.btnA && !this._prevP2BtnA,
+      });
+      this._prevP2BtnA = this.input.btnA;
+
       if (this.net.peerState) {
         const s = this.net.peerState;
-        // Update P1 position (we're P2, so P1 is the peer)
-        if (s.p1) { this.player.x=s.p1.x; this.player.y=s.p1.y; this.player.hp=s.p1.hp; this.player.facing=s.p1.facing; this.player.state=s.p1.state; this.player.score=s.p1.score; }
-        if (s.p2) { this.player2.x=s.p2.x; this.player2.y=s.p2.y; this.player2.hp=s.p2.hp; this.player2.facing=s.p2.facing; this.player2.state=s.p2.state; this.player2.score=s.p2.score; }
+        // P1 (Host's player) — smooth lerp to network position
+        if (s.p1) {
+          this.player.x += (s.p1.x - this.player.x) * 0.3;
+          this.player.y += (s.p1.y - this.player.y) * 0.3;
+          this.player.hp = s.p1.hp;
+          this.player.facing = s.p1.facing;
+          this.player.state = s.p1.state;
+          this.player.score = s.p1.score;
+        }
+        // P2 (Guest's own player) — soft correction from Host authority
+        if (s.p2) {
+          // Only correct if far off (>20px) — otherwise trust local prediction
+          const dx = s.p2.x - this.player2.x;
+          const dy = s.p2.y - this.player2.y;
+          if (Math.abs(dx) > 20) this.player2.x += dx * 0.4;
+          if (Math.abs(dy) > 20) this.player2.y += dy * 0.4;
+          this.player2.hp = s.p2.hp;
+          this.player2.score = s.p2.score;
+        }
+        // Boss sync
+        if (s.boss && this.boss) {
+          this.boss.x += (s.boss.x - this.boss.x) * 0.3;
+          this.boss.y += (s.boss.y - this.boss.y) * 0.3;
+          this.boss.hp = s.boss.hp;
+        }
         if (s.timer !== undefined) this.stageTimer = s.timer;
+        this.net.peerState = null; // consumed
       }
     }
   }
