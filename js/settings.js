@@ -168,3 +168,7 @@ const JBTN={
   B:    {x:WIDTH-JOYPAD_PAD-BTN_W*2-BTN_GAP,        y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'B', hint:'Attack'},
   A:    {x:WIDTH-JOYPAD_PAD-BTN_W,                   y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'A', hint:'Jump'},
 };
+
+// ── Co-op Server ─────────────────────────────────────
+// เปลี่ยน URL นี้หลัง deploy server บน Render.com
+const COOP_SERVER_URL = 'wss://tiny-guardian-server.onrender.com';

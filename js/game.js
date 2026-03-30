@@ -12,6 +12,7 @@ class Game {
     this.state = STATE.LOADING;
 
     this.player = new Player();
+    this.player2 = null;    // Co-op Player 2
     this.world = new World();
     this.enemyManager = new EnemyManager();
     this.projManager = new ProjectileManager();
@@ -20,6 +21,12 @@ class Game {
     this.tally = new TallyScreen();
     this.nameScreen = new NameScreen();
     this.rankingScreen = new RankingScreen();
+
+    // Co-op
+    this.coopMode = false;
+    this.net = new NetworkManager();
+    this.coopLobby = new CoopLobbyUI();
+    this._setupNetwork();
 
     this.boss = null;
     this.currentStage = 1;
@@ -49,6 +56,60 @@ class Game {
 
   setImages(imgs) { this.images = imgs; }
   setSounds(snds) { this.sounds = snds; }
+
+  // ── Network Setup ──
+  _setupNetwork() {
+    this.net.onEvent = (type, data) => {
+      switch (type) {
+        case 'room_created':
+          this.coopLobby.state = 'waiting';
+          this.coopLobby.roomCode = data;
+          break;
+        case 'room_joined':
+          this.coopLobby.state = 'guest_ready';
+          this.coopLobby.roomCode = data;
+          break;
+        case 'guest_joined':
+          this.coopLobby.state = 'ready';
+          break;
+        case 'game_start':
+          this._startCoopGame();
+          break;
+        case 'peer_left':
+          this.hud.addNotification('⚠️ เพื่อนออกจากห้อง');
+          if (this.state === 'COOP_LOBBY') this.coopLobby.state = 'menu';
+          break;
+        case 'error':
+          this.coopLobby.state = 'error';
+          this.coopLobby.errorMsg = data || 'เกิดข้อผิดพลาด';
+          break;
+        case 'peer_event':
+          this._handlePeerEvent(data);
+          break;
+      }
+    };
+  }
+
+  _startCoopGame() {
+    this.coopMode = true;
+    this.player.reset(); this.player.maxHp = 5; this.player.hp = 5;
+    this.player.coopActive = true;
+    this.player2 = new Player();
+    this.player2.reset(); this.player2.maxHp = 5; this.player2.hp = 5;
+    this.player2.isP2 = true;
+    this.player2.coopActive = true;
+    // P2 starts on right side
+    this.player2.x = WIDTH - PLAYER_W - 30;
+    this.currentStage = 1; this.currentWave = 0;
+    this.stagesCleared = 0; this.timeBonuses = [];
+    this._startStage(1);
+    this.state = STATE.PLAYING;
+  }
+
+  _handlePeerEvent(data) {
+    if (!data || !data.event) return;
+    if (data.event === 'sfx') this.playSfx(data.name);
+  }
 
   start() {
     this.state = STATE.INTRO;
@@ -81,7 +142,12 @@ class Game {
 
     switch (this.state) {
       case STATE.INTRO:    this.introTimer += dt; break;
-      case STATE.PLAYING:  this._updatePlaying(dt); break;
+      case 'COOP_LOBBY':   this.coopLobby.update(dt); break;
+      case STATE.PLAYING:
+        this._updatePlaying(dt);
+        // Co-op: update P2 + network sync
+        if (this.coopMode && this.player2) this._updateCoop(dt);
+        break;
       case STATE.STAGE_CLEAR:
         this.stageClearTimer -= dt;
         if (this.stageClearTimer <= 0) {
@@ -158,10 +224,82 @@ class Game {
       }
     }
 
-    if (this.player.hp <= 0) {
-      this.playSfx('die');
-      this.state = STATE.GAME_OVER;
-      this.stageClearTimer = 2.5;
+    if (this.coopMode) {
+      // Co-op: game over only when BOTH players dead
+      if (this.player.hp <= 0 && (!this.player2 || this.player2.hp <= 0)) {
+        this.playSfx('die');
+        this.state = STATE.GAME_OVER;
+        this.stageClearTimer = 2.5;
+      }
+    } else {
+      if (this.player.hp <= 0) {
+        this.playSfx('die');
+        this.state = STATE.GAME_OVER;
+        this.stageClearTimer = 2.5;
+      }
+    }
+  }
+
+  _updateCoop(dt) {
+    if (!this.player2) return;
+    if (this.net.isHost) {
+      // Host: update P2 with peer input
+      const p2Input = {
+        left: this.net.peerInput.left,
+        right: this.net.peerInput.right,
+        btnA: this.net.peerInput.btnA,
+        btnB: this.net.peerInput.btnB,
+        jumpPressed: this.net.peerInput.jumpPressed,
+      };
+      if (this.player2.hp > 0) {
+        this.player2.update(dt, p2Input, this.world, this);
+      }
+      // Send state to guest
+      this.net.sendGameState({
+        p1: { x:this.player.x, y:this.player.y, hp:this.player.hp, facing:this.player.facing, state:this.player.state, score:this.player.score, animFrame:this.player.animFrame },
+        p2: { x:this.player2.x, y:this.player2.y, hp:this.player2.hp, facing:this.player2.facing, state:this.player2.state, score:this.player2.score, animFrame:this.player2.animFrame },
+        enemies: this.enemyManager.enemies.map(e => ({ x:e.x, y:e.y, type:e.type, alive:e.alive, dying:e.dying, angry:e.angry, facing:e.facing })),
+        boss: this.boss ? { x:this.boss.x, y:this.boss.y, hp:this.boss.hp, alive:this.boss.alive } : null,
+        stage: this.currentStage,
+        timer: this.stageTimer,
+      });
+      // P2 collision with enemies
+      if (this.player2.hp > 0) {
+        const p2H = this.player2.getHitbox();
+        if (!this.player2.invincible) {
+          for (const enemy of this.enemyManager.enemies) {
+            if (enemy.dying) continue;
+            if (this._aabb(p2H, enemy.getHitbox())) { this.player2.takeDamage(this); break; }
+          }
+        }
+        if (this.boss && !this.boss.dying && !this.player2.invincible) {
+          if (this._aabb(p2H, this.boss.getHitbox())) this.player2.takeDamage(this);
+        }
+        // P2 enemy bullets
+        for (const eb of this.projManager.enemyBullets) {
+          if (!eb.alive) continue;
+          if (this._aabb(p2H, eb.getHitbox())) { eb.alive = false; this.player2.takeDamage(this); }
+        }
+        // P2 items
+        for (const item of this.itemManager.items) {
+          if (!item.alive) continue;
+          if (this._aabb(p2H, item.getHitbox())) {
+            item.alive = false;
+            if (item.healsHp) { if(this.player2.hp<this.player2.maxHp){this.player2.hp++;this.hud.addComboPopup('+1 HP',item.x,item.y,'#42A5F5');} }
+            else if (!item.healsFat) { this.player2.score+=item.points; this.player2.itemsCollected++; }
+          }
+        }
+      }
+    } else if (this.net.isGuest) {
+      // Guest: send input, receive state
+      this.net.sendInput(this.input);
+      if (this.net.peerState) {
+        const s = this.net.peerState;
+        // Update P1 position (we're P2, so P1 is the peer)
+        if (s.p1) { this.player.x=s.p1.x; this.player.y=s.p1.y; this.player.hp=s.p1.hp; this.player.facing=s.p1.facing; this.player.state=s.p1.state; this.player.score=s.p1.score; }
+        if (s.p2) { this.player2.x=s.p2.x; this.player2.y=s.p2.y; this.player2.hp=s.p2.hp; this.player2.facing=s.p2.facing; this.player2.state=s.p2.state; this.player2.score=s.p2.score; }
+        if (s.timer !== undefined) this.stageTimer = s.timer;
+      }
     }
   }
 
@@ -365,6 +503,7 @@ class Game {
 
     switch (this.state) {
       case STATE.INTRO:       this._drawIntro(ctx); break;
+      case 'COOP_LOBBY':      this.coopLobby.draw(ctx); break;
       case STATE.PLAYING:
       case STATE.GAME_OVER:
         this._drawPlaying(ctx);
@@ -422,12 +561,22 @@ class Game {
     ctx.restore();
 
     ctx.font = '15px '+FONT.BODY; ctx.fillStyle = COL.COCOA;
-    ctx.fillText('ปกป้องโลกจากเหล่าวายร้ายกัน!', WIDTH/2, 500);
+    ctx.fillText('ปกป้องโลกจากเหล่าวายร้ายกัน!', WIDTH/2, 490);
 
-    ctx.globalAlpha = 0.5+Math.sin(this.introTimer*4)*0.5;
-    ctx.font = '16px '+FONT.MAIN; ctx.fillStyle = COL.PRIMARY_D;
-    ctx.fillText('แตะที่จอหรือกด A เพื่อเริ่มกันเลย', WIDTH/2, 550);
-    ctx.globalAlpha = 1;
+    // Solo play button
+    ctx.fillStyle = COL.PRIMARY;
+    _rr(ctx, WIDTH/2-120, 520, 240, 46, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 520, 240, 46, 14); ctx.stroke();
+    ctx.font = '16px '+FONT.MAIN; ctx.fillStyle = COL.HUD_TEXT;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 543);
+
+    // Co-op button
+    ctx.fillStyle = COL.SKY_BLUE;
+    _rr(ctx, WIDTH/2-120, 580, 240, 46, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 580, 240, 46, 14); ctx.stroke();
+    ctx.fillStyle = COL.HUD_TEXT;
+    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 603);
 
     ctx.font = '24px '+FONT.BODY; ctx.textAlign = 'center';
     ctx.fillText('⭐', 50, 120+Math.sin(this.introTimer*1.5)*10);
@@ -444,8 +593,40 @@ class Game {
     if (this.boss) this.boss.draw(ctx, this.images);
     this.projManager.draw(ctx);
     this.player.draw(ctx, this.images);
+    // Draw Player 2
+    if (this.player2) this.player2.draw(ctx, this.images);
     this.hud.draw(ctx, this.player, this.currentStage, this.stageTimer);
+    // Draw P2 HP on right side
+    if (this.coopMode && this.player2) {
+      this._drawP2HUD(ctx);
+    }
     this._drawJoypad(ctx);
+  }
+
+  _drawP2HUD(ctx) {
+    const p2 = this.player2;
+    // P2 hearts on right side, row 1 of HUD area
+    const heartR = 8, sp = 20;
+    for (let i = 0; i < p2.maxHp; i++) {
+      const hx = WIDTH - 10 - (p2.maxHp - i) * sp;
+      const hy = 12;
+      ctx.fillStyle = i < p2.hp ? '#42A5F5' : '#E3F2FD';
+      ctx.beginPath();
+      ctx.moveTo(hx,hy+heartR*0.4);
+      ctx.bezierCurveTo(hx,hy-heartR*0.5,hx-heartR,hy-heartR*0.5,hx-heartR,hy+heartR*0.1);
+      ctx.bezierCurveTo(hx-heartR,hy+heartR*0.6,hx,hy+heartR,hx,hy+heartR*1.2);
+      ctx.bezierCurveTo(hx,hy+heartR,hx+heartR,hy+heartR*0.6,hx+heartR,hy+heartR*0.1);
+      ctx.bezierCurveTo(hx+heartR,hy-heartR*0.5,hx,hy-heartR*0.5,hx,hy+heartR*0.4);
+      ctx.closePath(); ctx.fill();
+    }
+    // P2 score
+    ctx.font = '11px '+FONT.MAIN; ctx.fillStyle = '#42A5F5'; ctx.textAlign = 'right';
+    ctx.fillText('P2 ★'+p2.score, WIDTH-8, 42);
+    // Ghost label if dead
+    if (p2.hp <= 0) {
+      ctx.font = '10px '+FONT.BODY; ctx.fillStyle = 'rgba(66,165,245,0.5)';
+      ctx.fillText('👻 GHOST', WIDTH-8, 55);
+    }
   }
 
   _drawJoypad(ctx) {
@@ -557,6 +738,19 @@ class Game {
       return;
     }
 
+    // COOP_LOBBY: route keys for code input
+    if (this.state === 'COOP_LOBBY') {
+      if (down) {
+        const action = this.coopLobby.handleKey(key);
+        if (action === 'join') {
+          this.coopLobby.state = 'connecting';
+          this.net.joinRoom(this.coopLobby.inputCode, COOP_SERVER_URL);
+        }
+        if (key === 'Escape') { this.net.disconnect(); this.state = STATE.INTRO; }
+      }
+      return;
+    }
+
     if (['a','d','b',' ','arrowleft','arrowright'].includes(kl)) e.preventDefault();
 
     if (kl === 'a' || kl === 'arrowleft') this.input.left = down;
@@ -575,6 +769,33 @@ class Game {
     else if (this.state === STATE.RANKING) this._restartGame();
   }
 
+  _handleIntroTap(pos) {
+    // Solo button: y 520-566
+    if (pos.y >= 520 && pos.y <= 566) { this._startGame(); return true; }
+    // Co-op button: y 580-626
+    if (pos.y >= 580 && pos.y <= 626) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
+    return false;
+  }
+
+  _handleCoopLobbyTap(pos) {
+    const action = this.coopLobby.handleTouch(pos.x, pos.y, this.net);
+    if (action === 'create') {
+      this.coopLobby.state = 'connecting';
+      this.net.createRoom(COOP_SERVER_URL);
+    } else if (action === 'join') {
+      this.coopLobby.state = 'connecting';
+      this.net.joinRoom(this.coopLobby.inputCode, COOP_SERVER_URL);
+    } else if (action === 'start') {
+      this.net.startGame();
+    } else if (action === 'back') {
+      this.net.disconnect();
+      this.state = STATE.INTRO;
+    } else if (action === 'cancel') {
+      this.net.disconnect();
+      this.coopLobby.state = 'menu';
+    }
+  }
+
   _getCanvasPos(cx, cy) {
     const r = this.canvas.getBoundingClientRect();
     return { x: (cx-r.left)*(WIDTH/r.width), y: (cy-r.top)*(HEIGHT/r.height) };
@@ -583,7 +804,16 @@ class Game {
   _onTouch(e) {
     e.preventDefault();
     if (this._inputLock <= 0) {
-      if (this.state === STATE.INTRO) { this._startGame(); return; }
+      if (this.state === STATE.INTRO && e.changedTouches.length > 0) {
+        const pos = this._getCanvasPos(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        if (this._handleIntroTap(pos)) return;
+        return;
+      }
+      if (this.state === 'COOP_LOBBY' && e.changedTouches.length > 0) {
+        const pos = this._getCanvasPos(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        this._handleCoopLobbyTap(pos);
+        return;
+      }
       if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(); this._inputLock = 400; return; }
       if (this.state === STATE.RANKING) { this._restartGame(); return; }
       if (this.state === STATE.NAME && e.changedTouches.length > 0) {
@@ -628,7 +858,8 @@ class Game {
   _onMouse(e, down) {
     const pos = this._getCanvasPos(e.clientX, e.clientY);
     if (down && this._inputLock <= 0) {
-      if (this.state === STATE.INTRO) { this._startGame(); return; }
+      if (this.state === STATE.INTRO) { if (this._handleIntroTap(pos)) return; return; }
+      if (this.state === 'COOP_LOBBY') { this._handleCoopLobbyTap(pos); return; }
       if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(); this._inputLock = 400; return; }
       if (this.state === STATE.RANKING) { this._restartGame(); return; }
       if (this.state === STATE.NAME) {

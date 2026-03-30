@@ -18,6 +18,8 @@ class Player {
     this.hp = PLAYER_HP;
     this.maxHp = PLAYER_HP;
     this.grounded = true;
+    this.isP2 = false;   // set true for Player 2
+    this.coopActive = false; // set true in co-op mode
     this.onPlatform = null;
     this.facing = 1; // 1=right, -1=left
 
@@ -308,6 +310,9 @@ class Player {
   // ── Draw ────────────────────────────────────────
   draw(ctx, images) {
     if (this.invincible && Math.floor(this.invincibleTimer / 80) % 2 === 0) return;
+    // Ghost mode — dead player
+    const isGhost = this.hp <= 0;
+    if (isGhost && !this.coopActive) return; // solo dead = don't draw
 
     const dw = this.drawW;
     const dh = this.drawH;
@@ -315,6 +320,7 @@ class Player {
     const dy = this.y + (this.h - dh);
 
     ctx.save();
+    if (isGhost) ctx.globalAlpha = 0.3;
 
     // Walk animation — bob body up/down + slight lean
     let bobY = 0, leanAngle = 0;
@@ -348,6 +354,15 @@ class Player {
       } else {
         ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, dw, dh);
       }
+      // P2 blue tint
+      if (this.isP2) {
+        ctx.globalAlpha = 0.35;
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.fillStyle = '#42A5F5';
+        ctx.fillRect(0, 0, dw, dh);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = isGhost ? 0.3 : 1;
+      }
     } else {
       this._drawEmoji(ctx, dw, dh);
     }
@@ -378,8 +393,8 @@ class Player {
   }
 
   _drawEmoji(ctx, dw, dh) {
-    // Body
-    const bodyCol = this.fatLevel >= 2 ? '#FFCC80' : '#FFE082';
+    // Body — P2 is blue
+    const bodyCol = this.isP2 ? '#81D4FA' : (this.fatLevel >= 2 ? '#FFCC80' : '#FFE082');
     ctx.fillStyle = bodyCol;
     // Rounded body
     const r = 10;
