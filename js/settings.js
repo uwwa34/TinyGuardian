@@ -172,4 +172,4 @@ const JBTN={
 
 // ── Co-op Server ─────────────────────────────────────
 // เปลี่ยน URL นี้หลัง deploy server บน Render.com
-const COOP_SERVER_URL = 'https://tiny-guardian-server-1.onrender.com';
+const COOP_SERVER_URL = 'wss://tiny-guardian-server.onrender.com';

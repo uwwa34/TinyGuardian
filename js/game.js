@@ -173,6 +173,14 @@ class Game {
   }
 
   _updatePlaying(dt) {
+    // Guest in co-op: skip ALL local physics — just render Host state
+    if (this.coopMode && this.net.isGuest) {
+      // Only update visual things
+      this.world.update(dt);
+      this.hud.update(dt);
+      return;
+    }
+
     const jumpJustPressed = this.input.btnA && !this._prevBtnA;
     const inputForPlayer = {
       left: this.input.left, right: this.input.right,
@@ -184,18 +192,7 @@ class Game {
     this.stageTimer -= dt;
     if (this.stageTimer < 0) this.stageTimer = 0;
 
-    // In co-op Guest mode: joypad controls player2 locally
-    if (this.coopMode && this.net.isGuest) {
-      // Guest: update own player2 with local joypad (instant response)
-      if (this.player2 && this.player2.hp > 0) {
-        this.player2.update(dt, inputForPlayer, this.world, this);
-      }
-      // Don't update player1 locally — Host sends P1 state
-    } else {
-      // Solo or Host: update player1 with joypad
-      this.player.update(dt, inputForPlayer, this.world, this);
-    }
-
+    this.player.update(dt, inputForPlayer, this.world, this);
     this.world.update(dt);
     this.enemyManager.update(dt, this.world, this);
     this.projManager.update(dt);
@@ -253,107 +250,68 @@ class Game {
 
   _updateCoop(dt) {
     if (!this.player2) return;
-    if (this.net.isHost) {
-      // Host: update P2 with peer input from Guest
-      // Detect jump edge: either queued or btnA edge
-      const btnANow = this.net.peerInput.btnA;
-      const jumpFromQueue = this.net.peerInput._jumpQueued;
-      const jumpFromEdge = btnANow && !this._prevP2BtnA_host;
-      this._prevP2BtnA_host = btnANow;
 
-      const p2Input = {
-        left: this.net.peerInput.left,
-        right: this.net.peerInput.right,
-        btnA: btnANow,
-        btnB: this.net.peerInput.btnB,
-        jumpPressed: jumpFromQueue || jumpFromEdge,
-      };
-      // Consume jump queue
+    if (this.net.isHost) {
+      // ═══ HOST: full game authority ═══
+      const btnANow = this.net.peerInput.btnA;
+      const jumpQ = this.net.peerInput._jumpQueued;
+      const jumpEdge = btnANow && !this._prevP2BtnA_host;
+      this._prevP2BtnA_host = btnANow;
       this.net.peerInput._jumpQueued = false;
 
       if (this.player2.hp > 0) {
-        this.player2.update(dt, p2Input, this.world, this);
-      }
-      // Send state to Guest (20fps) — include vy/grounded for smooth sync
-      this.net.sendGameState({
-        p1: { x:this.player.x, y:this.player.y, vy:this.player.vy, hp:this.player.hp, facing:this.player.facing, state:this.player.state, score:this.player.score, grounded:this.player.grounded },
-        p2: { x:this.player2.x, y:this.player2.y, vy:this.player2.vy, hp:this.player2.hp, facing:this.player2.facing, state:this.player2.state, score:this.player2.score, grounded:this.player2.grounded },
-        boss: this.boss ? { x:this.boss.x, y:this.boss.y, hp:this.boss.hp, alive:this.boss.alive } : null,
-        timer: this.stageTimer,
-      });
-      // P2 collision with enemies/boss/bullets/items
-      if (this.player2.hp > 0) {
+        this.player2.update(dt, {
+          left:this.net.peerInput.left, right:this.net.peerInput.right,
+          btnA:btnANow, btnB:this.net.peerInput.btnB,
+          jumpPressed:jumpQ||jumpEdge,
+        }, this.world, this);
+
+        // P2 collisions
         const p2H = this.player2.getHitbox();
         if (!this.player2.invincible) {
-          for (const enemy of this.enemyManager.enemies) {
-            if (enemy.dying) continue;
-            if (this._aabb(p2H, enemy.getHitbox())) { this.player2.takeDamage(this); break; }
-          }
-          if (this.boss && !this.boss.dying) {
-            if (this._aabb(p2H, this.boss.getHitbox())) this.player2.takeDamage(this);
-          }
+          for (const e of this.enemyManager.enemies) { if (!e.dying && this._aabb(p2H,e.getHitbox())) { this.player2.takeDamage(this); break; } }
+          if (this.boss && !this.boss.dying && this._aabb(p2H,this.boss.getHitbox())) this.player2.takeDamage(this);
         }
-        for (const eb of this.projManager.enemyBullets) {
-          if (!eb.alive) continue;
-          if (this._aabb(p2H, eb.getHitbox())) { eb.alive = false; this.player2.takeDamage(this); }
-        }
-        for (const item of this.itemManager.items) {
-          if (!item.alive) continue;
-          if (this._aabb(p2H, item.getHitbox())) {
-            item.alive = false;
-            if (item.healsHp) { if(this.player2.hp<this.player2.maxHp){this.player2.hp++;} }
-            else if (!item.healsFat) { this.player2.score+=item.points; this.player2.itemsCollected++; }
-          }
-        }
+        for (const eb of this.projManager.enemyBullets) { if (eb.alive && this._aabb(p2H,eb.getHitbox())) { eb.alive=false; this.player2.takeDamage(this); } }
+        for (const it of this.itemManager.items) { if (it.alive && this._aabb(p2H,it.getHitbox())) { it.alive=false; if(it.healsHp&&this.player2.hp<this.player2.maxHp)this.player2.hp++; else if(!it.healsFat&&!it.healsHp){this.player2.score+=it.points;this.player2.itemsCollected++;} } }
       }
-    } else if (this.net.isGuest) {
-      // Guest: send own input + apply Host sync smoothly
-      this.net.sendInput({
-        left: this.input.left, right: this.input.right,
-        btnA: this.input.btnA, btnB: this.input.btnB,
-        jumpPressed: this.input.btnA && !this._prevP2BtnA,
+
+      // Send FULL state
+      this.net.sendGameState({
+        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0},
+        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
+        en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
+        bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer}:null,
+        ti:this.stageTimer,gs:this.state,st:this.currentStage,
       });
+
+    } else if (this.net.isGuest) {
+      // ═══ GUEST: pure renderer — no physics ═══
+      this.net.sendInput({left:this.input.left,right:this.input.right,btnA:this.input.btnA,btnB:this.input.btnB,jumpPressed:this.input.btnA&&!this._prevP2BtnA});
       this._prevP2BtnA = this.input.btnA;
 
-      if (this.net.peerState) {
-        const s = this.net.peerState;
-        // P1 (Host's player) — smooth lerp
-        if (s.p1) {
-          this.player.x += (s.p1.x - this.player.x) * 0.25;
-          this.player.y += (s.p1.y - this.player.y) * 0.25;
-          this.player.vy = s.p1.vy;
-          this.player.hp = s.p1.hp;
-          this.player.facing = s.p1.facing;
-          this.player.state = s.p1.state;
-          this.player.score = s.p1.score;
-          this.player.grounded = s.p1.grounded;
-        }
-        // P2 (Guest's own) — gentle correction, trust local physics
-        if (s.p2) {
-          const dx = s.p2.x - this.player2.x;
-          const dy = s.p2.y - this.player2.y;
-          // Gentle X correction
-          if (Math.abs(dx) > 8) this.player2.x += dx * 0.15;
-          // Y correction — stronger when grounded differs
-          if (s.p2.grounded && !this.player2.grounded) {
-            this.player2.y = s.p2.y;
-            this.player2.vy = 0;
-            this.player2.grounded = true;
-          } else if (Math.abs(dy) > 15) {
-            this.player2.y += dy * 0.2;
-          }
-          this.player2.hp = s.p2.hp;
-          this.player2.score = s.p2.score;
-        }
-        // Boss sync
-        if (s.boss && this.boss) {
-          this.boss.x += (s.boss.x - this.boss.x) * 0.25;
-          this.boss.y += (s.boss.y - this.boss.y) * 0.25;
-          this.boss.hp = s.boss.hp;
-        }
-        if (s.timer !== undefined) this.stageTimer = s.timer;
-        this.net.peerState = null;
+      const s = this.net.peerState;
+      if (!s) return;
+
+      // Direct apply — no lerp, exact Host state
+      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime;}
+      if(s.p2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime;}
+
+      // Enemies — sync from Host (full replace)
+      if(s.en){
+        while(this.enemyManager.enemies.length<s.en.length) this.enemyManager.enemies.push(new EnemyUnit('ERASER',0,0));
+        this.enemyManager.enemies.length=s.en.length;
+        for(let i=0;i<s.en.length;i++){const e=this.enemyManager.enemies[i],se=s.en[i];e.x=se.x;e.y=se.y;e.alive=se.a;e.dying=se.d;e.angry=se.g;e.facing=se.f;e.dieTimer=se.dt||0;if(se.t&&ENEMY[se.t]){e.type=se.t;e.def=ENEMY[se.t];e.w=e.def.w;e.h=e.def.h;}}
       }
+
+      // Boss
+      if(s.bo&&this.boss){const b=this.boss,sb=s.bo;b.x=sb.x;b.y=sb.y;b.hp=sb.hp;b.maxHp=sb.mhp;b.alive=sb.a;b.dying=sb.d;b.facing=sb.f;b.state=sb.s;b.isAngry=sb.ag;b.flashTimer=sb.fl||0;}
+
+      if(s.ti!==undefined)this.stageTimer=s.ti;
+      if(s.gs&&s.gs!==this.state)this.state=s.gs;
+      if(s.st&&s.st!==this.currentStage){this.currentStage=s.st;this.world.loadStage(s.st);}
+
+      this.net.peerState=null;
     }
   }
 
@@ -647,40 +605,9 @@ class Game {
     if (this.boss) this.boss.draw(ctx, this.images);
     this.projManager.draw(ctx);
     this.player.draw(ctx, this.images);
-    // Draw Player 2
     if (this.player2) this.player2.draw(ctx, this.images);
-    this.hud.draw(ctx, this.player, this.currentStage, this.stageTimer);
-    // Draw P2 HP on right side
-    if (this.coopMode && this.player2) {
-      this._drawP2HUD(ctx);
-    }
+    this.hud.draw(ctx, this.player, this.currentStage, this.stageTimer, this.coopMode ? this.player2 : null);
     this._drawJoypad(ctx);
-  }
-
-  _drawP2HUD(ctx) {
-    const p2 = this.player2;
-    // P2 hearts on right side, row 1 of HUD area
-    const heartR = 8, sp = 20;
-    for (let i = 0; i < p2.maxHp; i++) {
-      const hx = WIDTH - 10 - (p2.maxHp - i) * sp;
-      const hy = 12;
-      ctx.fillStyle = i < p2.hp ? '#42A5F5' : '#E3F2FD';
-      ctx.beginPath();
-      ctx.moveTo(hx,hy+heartR*0.4);
-      ctx.bezierCurveTo(hx,hy-heartR*0.5,hx-heartR,hy-heartR*0.5,hx-heartR,hy+heartR*0.1);
-      ctx.bezierCurveTo(hx-heartR,hy+heartR*0.6,hx,hy+heartR,hx,hy+heartR*1.2);
-      ctx.bezierCurveTo(hx,hy+heartR,hx+heartR,hy+heartR*0.6,hx+heartR,hy+heartR*0.1);
-      ctx.bezierCurveTo(hx+heartR,hy-heartR*0.5,hx,hy-heartR*0.5,hx,hy+heartR*0.4);
-      ctx.closePath(); ctx.fill();
-    }
-    // P2 score
-    ctx.font = '11px '+FONT.MAIN; ctx.fillStyle = '#42A5F5'; ctx.textAlign = 'right';
-    ctx.fillText('P2 ★'+p2.score, WIDTH-8, 42);
-    // Ghost label if dead
-    if (p2.hp <= 0) {
-      ctx.font = '10px '+FONT.BODY; ctx.fillStyle = 'rgba(66,165,245,0.5)';
-      ctx.fillText('👻 GHOST', WIDTH-8, 55);
-    }
   }
 
   _drawJoypad(ctx) {
