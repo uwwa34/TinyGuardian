@@ -333,7 +333,7 @@ class Game {
       if(s.en){
         while(this.enemyManager.enemies.length<s.en.length) this.enemyManager.enemies.push(new EnemyUnit('ERASER',0,0));
         this.enemyManager.enemies.length=s.en.length;
-        for(let i=0;i<s.en.length;i++){const e=this.enemyManager.enemies[i],se=s.en[i];e.x=se.x;e.y=se.y;e.alive=se.a;e.dying=se.d;e.angry=se.g;e.facing=se.f;e.dieTimer=se.dt||0;if(se.t&&ENEMY[se.t]){e.type=se.t;e.def=ENEMY[se.t];e.w=e.def.w;e.h=e.def.h;}}
+        for(let i=0;i<s.en.length;i++){const e=this.enemyManager.enemies[i],se=s.en[i];e.x=se.x;e.y=se.y;e.alive=se.a;e.dying=se.d;e.angry=se.g;e.facing=se.f;e.dieTimer=se.dt||0;e.spawnShield=0;if(se.t&&ENEMY[se.t]){e.type=se.t;e.def=ENEMY[se.t];e.w=e.def.w;e.h=e.def.h;}}
       }
 
       // Boss
@@ -372,7 +372,13 @@ class Game {
       }
 
       if(s.ti!==undefined)this.stageTimer=s.ti;
-      if(s.gs&&s.gs!==this.state)this.state=s.gs;
+      if(s.gs&&s.gs!==this.state){
+        // If transitioning to GAME_OVER, set timer
+        if(s.gs===STATE.GAME_OVER&&this.state!==STATE.GAME_OVER){
+          this.stageClearTimer=2.5;
+        }
+        this.state=s.gs;
+      }
       if(s.st&&s.st!==this.currentStage){this.currentStage=s.st;this.world.loadStage(s.st);}
 
       this.net.peerState=null;
@@ -485,7 +491,7 @@ class Game {
   _startStage(num) {
     this.currentStage = num;
     this.currentWave = 0;
-    this.waveDelay = 1200; // delay before first wave
+    this.waveDelay = 1200;
     this.stageTimer = STAGE_TIME[num] || 90;
     this.boss = null;
     this._stageClearing = false;
@@ -493,11 +499,19 @@ class Game {
     this.enemyManager.reset();
     this.projManager.reset();
     this.itemManager.reset();
+    // Reset P1 position
     this.player.x = WIDTH/2 - this.player.w/2;
     this.player.y = GROUND_Y - this.player.h;
     this.player.vy = 0;
     this.player.grounded = true;
     this.player.fatLevel = 0;
+    // Reset P2 position if co-op
+    if (this.player2) {
+      this.player2.x = WIDTH - PLAYER_W - 30;
+      this.player2.y = GROUND_Y - this.player2.h;
+      this.player2.vy = 0;
+      this.player2.grounded = true;
+    }
     this.state = STATE.PLAYING;
     this.input = { left:false, right:false, btnA:false, btnB:false };
     this._prevBtnA = false;
@@ -921,7 +935,13 @@ class Game {
 
   // ── State Transitions ──────────────────────────────
   _startGame() {
+    // Clean up co-op state
+    this.coopMode = false;
+    this.player2 = null;
+    this.net.disconnect();
+
     this.player.reset();
+    this.player.coopActive = false;
     this.stagesCleared = 0;
     this.timeBonuses = [];
     this.currentStage = 1;
@@ -939,6 +959,12 @@ class Game {
   }
 
   _restartGame() {
+    // Clean up co-op
+    this.coopMode = false;
+    this.player2 = null;
+    this.player.coopActive = false;
+    this.net.disconnect();
+
     this.state = STATE.INTRO;
     this.introTimer = 0;
     this._inputLock = 400;
