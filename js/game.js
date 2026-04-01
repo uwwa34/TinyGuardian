@@ -120,10 +120,10 @@ class Game {
 
   _startCoopGame() {
     this.coopMode = true;
-    this.player.reset(); this.player.maxHp = 5; this.player.hp = 5;
+    this.player.reset(); this.player.maxHp = 8; this.player.hp = 8;
     this.player.coopActive = true;
     this.player2 = new Player();
-    this.player2.reset(); this.player2.maxHp = 5; this.player2.hp = 5;
+    this.player2.reset(); this.player2.maxHp = 8; this.player2.hp = 8;
     this.player2.isP2 = true;
     this.player2.coopActive = true;
     // P2 starts on right side
@@ -304,12 +304,19 @@ class Game {
         for (const it of this.itemManager.items) { if (it.alive && this._aabb(p2H,it.getHitbox())) { it.alive=false; if(it.healsHp&&this.player2.hp<this.player2.maxHp)this.player2.hp++; else if(!it.healsFat&&!it.healsHp){this.player2.score+=it.points;this.player2.itemsCollected++;} } }
       }
 
+      // Co-op game over — check AFTER P2 collision update
+      if (this.player.hp <= 0 && this.player2.hp <= 0 && this.state === STATE.PLAYING) {
+        this.playSfx('die');
+        this.state = STATE.GAME_OVER;
+        this.stageClearTimer = 2.5;
+      }
+
       // Send FULL state (including bullets + items)
       this.net.sendGameState({
         p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0},
         p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
         en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
-        bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer}:null,
+        bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer,fin:this.boss.isFinal}:null,
         pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,c:b.charged})),
         eb:this.projManager.enemyBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y})),
         it:this.itemManager.items.filter(i=>i.alive).map(i=>({x:i.x,y:i.y,t:i.type,e:i.emoji})),
@@ -336,44 +343,47 @@ class Game {
         for(let i=0;i<s.en.length;i++){const e=this.enemyManager.enemies[i],se=s.en[i];e.x=se.x;e.y=se.y;e.alive=se.a;e.dying=se.d;e.angry=se.g;e.facing=se.f;e.dieTimer=se.dt||0;e.spawnShield=0;if(se.t&&ENEMY[se.t]){e.type=se.t;e.def=ENEMY[se.t];e.w=e.def.w;e.h=e.def.h;}}
       }
 
-      // Boss
-      if(s.bo&&this.boss){const b=this.boss,sb=s.bo;b.x=sb.x;b.y=sb.y;b.hp=sb.hp;b.maxHp=sb.mhp;b.alive=sb.a;b.dying=sb.d;b.facing=sb.f;b.state=sb.s;b.isAngry=sb.ag;b.flashTimer=sb.fl||0;}
-
-      // Player bullets — rebuild from Host data
-      if(s.pb){
-        this.projManager.playerBullets=[];
-        for(const b of s.pb){
-          const p={x:b.x,y:b.y,w:b.c?PROJ_CHARGE_W:PROJ_W,h:b.c?PROJ_CHARGE_H:PROJ_H,alive:true,charged:b.c,
-            getHitbox(){return{x:this.x,y:this.y,w:this.w,h:this.h};},
-            draw(ctx){ctx.fillStyle=b.c?COL.WARM_ORANGE:COL.PRIMARY;ctx.fillRect(this.x,this.y,this.w,this.h);}};
-          this.projManager.playerBullets.push(p);
+      // Boss — create if Host has boss but Guest doesn't
+      if(s.bo){
+        if(!this.boss){
+          const cfg=s.bo.fin?BOSS:MINIBOSS;
+          this.boss=new BossUnit(cfg,s.bo.x,s.bo.y,!!s.bo.fin);
         }
+        const b=this.boss,sb=s.bo;
+        b.x=sb.x;b.y=sb.y;b.hp=sb.hp;b.maxHp=sb.mhp;b.alive=sb.a;b.dying=sb.d;b.facing=sb.f;b.state=sb.s;b.isAngry=sb.ag;b.flashTimer=sb.fl||0;
+      } else {
+        this.boss=null;
       }
 
-      // Enemy bullets
+      // Player bullets — use real PlayerBullet objects
+      if(s.pb){
+        this.projManager.playerBullets=s.pb.map(b=>{
+          const pb=new PlayerBullet(b.x,b.y,1,b.c);
+          pb.x=b.x;pb.y=b.y;pb.trail=[];
+          return pb;
+        });
+      }
+
+      // Enemy bullets — use real EnemyBullet objects
       if(s.eb){
-        this.projManager.enemyBullets=[];
-        for(const b of s.eb){
-          const p={x:b.x,y:b.y,w:8,h:8,alive:true,
-            getHitbox(){return{x:this.x,y:this.y,w:this.w,h:this.h};},
-            draw(ctx){ctx.fillStyle='#EF5350';ctx.beginPath();ctx.arc(this.x+4,this.y+4,4,0,Math.PI*2);ctx.fill();}};
-          this.projManager.enemyBullets.push(p);
-        }
+        this.projManager.enemyBullets=s.eb.map(b=>{
+          const eb=new EnemyBullet(b.x,b.y,0,0,'normal');
+          eb.x=b.x;eb.y=b.y;
+          return eb;
+        });
       }
 
       // Items — rebuild as real ItemUnit objects
       if(s.it){
-        this.itemManager.items=[];
-        for(const si of s.it){
+        this.itemManager.items=s.it.map(si=>{
           const it=new ItemUnit(si.t||'COIN',si.x,si.y,this.currentStage);
-          it.alive=true; it.grounded=true; // don't let them fall
-          this.itemManager.items.push(it);
-        }
+          it.alive=true;it.grounded=true;
+          return it;
+        });
       }
 
       if(s.ti!==undefined)this.stageTimer=s.ti;
       if(s.gs&&s.gs!==this.state){
-        // If transitioning to GAME_OVER, set timer
         if(s.gs===STATE.GAME_OVER&&this.state!==STATE.GAME_OVER){
           this.stageClearTimer=2.5;
         }
