@@ -90,19 +90,29 @@ class NetworkManager {
 
   // ── Internal ──
   _connect(onOpen) {
-    if (this.ws) this.ws.close();
+    if (this.ws) { try { this.ws.close(); } catch(e){} }
     this.state = NET_STATE.CONNECTING;
     this._emit('connecting');
+
+    // Timeout — if no connection in 15s, give up
+    this._connectTimeout = setTimeout(() => {
+      if (this.state === NET_STATE.CONNECTING) {
+        this._emit('error', 'เชื่อมต่อไม่ได้ — Server อาจกำลัง sleep (ลองอีกครั้ง)');
+        try { this.ws.close(); } catch(e){}
+      }
+    }, 15000);
 
     try {
       this.ws = new WebSocket(this.serverUrl);
     } catch (e) {
+      clearTimeout(this._connectTimeout);
       this.state = NET_STATE.DISCONNECTED;
       this._emit('error', 'ไม่สามารถเชื่อมต่อ server');
       return;
     }
 
     this.ws.onopen = () => {
+      clearTimeout(this._connectTimeout);
       this.state = NET_STATE.IN_LOBBY;
       this._emit('connected');
       if (onOpen) onOpen();
@@ -115,11 +125,13 @@ class NetworkManager {
     };
 
     this.ws.onclose = () => {
+      clearTimeout(this._connectTimeout);
       this.state = NET_STATE.DISCONNECTED;
       this._emit('disconnected');
     };
 
     this.ws.onerror = () => {
+      clearTimeout(this._connectTimeout);
       this._emit('error', 'การเชื่อมต่อขัดข้อง');
     };
   }

@@ -96,8 +96,20 @@ class Game {
           }
           break;
         case 'error':
-          this.coopLobby.state = 'error';
-          this.coopLobby.errorMsg = data || 'เกิดข้อผิดพลาด';
+          if (this.state === 'COOP_LOBBY') {
+            this.coopLobby.state = 'error';
+            this.coopLobby.errorMsg = data || 'เกิดข้อผิดพลาด';
+          } else {
+            this.hud.addNotification('⚠️ ' + (data || 'ขัดข้อง'));
+          }
+          break;
+        case 'disconnected':
+          if (this.state === 'COOP_LOBBY') {
+            if (this.coopLobby.state === 'connecting') {
+              this.coopLobby.state = 'error';
+              this.coopLobby.errorMsg = 'เชื่อมต่อไม่ได้ — ลองใหม่';
+            }
+          }
           break;
         case 'peer_event':
           this._handlePeerEvent(data);
