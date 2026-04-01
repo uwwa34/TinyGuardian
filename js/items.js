@@ -67,23 +67,68 @@ class ItemUnit {
     if (!this.alive) return;
     const bobY = Math.sin(this.bobAngle)*3;
     const dy = this.y + bobY;
+    const cx = this.x + this.w/2, cy = dy + this.h/2;
 
-    if (this.isPowerup) {
-      ctx.save();
-      ctx.fillStyle='rgba(255,213,79,0.25)';
-      ctx.beginPath();ctx.arc(this.x+this.w/2, dy+this.h/2, this.w/2+8+Math.sin(this.bobAngle*2)*3, 0, Math.PI*2);ctx.fill();
-      ctx.restore();
-    }
-
-    // Try image
+    // Try image first
     if (images && this.imgKey && images[this.imgKey]) {
       const img = images[this.imgKey];
       ctx.drawImage(img, 0, 0, img.width, img.height, this.x, dy, this.w, this.h);
     } else {
-      ctx.font = this.w+'px '+FONT.BODY;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(this.emoji, this.x+this.w/2, dy+this.h/2);
+      // Fallback: draw colored shapes (reliable on all platforms)
+      ctx.save();
+      if (this.type === 'COIN' || this.type === 'SPECIAL') {
+        // Star/coin shape
+        const col = this.type === 'SPECIAL' ? '#FFD700' : '#FFE082';
+        ctx.fillStyle = col;
+        ctx.strokeStyle = '#F9A825';
+        ctx.lineWidth = 1.5;
+        this._drawStar(ctx, cx, cy, this.w/2 - 2, 5);
+        ctx.fill(); ctx.stroke();
+        // Label
+        ctx.fillStyle = '#5D4037';
+        ctx.font = 'bold '+(this.w*0.45)+'px '+FONT.BODY;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(this.type === 'SPECIAL' ? 'S' : '★', cx, cy + 1);
+      } else if (this.type === 'HEART') {
+        // Heart shape
+        ctx.fillStyle = '#EF5350';
+        const r = this.w/2 - 2;
+        ctx.beginPath(); ctx.moveTo(cx, cy+r*0.3);
+        ctx.bezierCurveTo(cx,cy-r*0.5,cx-r,cy-r*0.5,cx-r,cy+r*0.1);
+        ctx.bezierCurveTo(cx-r,cy+r*0.5,cx,cy+r*0.8,cx,cy+r);
+        ctx.bezierCurveTo(cx,cy+r*0.8,cx+r,cy+r*0.5,cx+r,cy+r*0.1);
+        ctx.bezierCurveTo(cx+r,cy-r*0.5,cx,cy-r*0.5,cx,cy+r*0.3);
+        ctx.closePath(); ctx.fill();
+      } else if (this.type === 'FOOD') {
+        // Apple shape
+        ctx.fillStyle = '#66BB6A';
+        ctx.beginPath(); ctx.arc(cx, cy, this.w/2-2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#388E3C';
+        ctx.fillRect(cx-1, cy-this.h/2, 2, 5);
+      } else {
+        // Generic circle with emoji
+        ctx.fillStyle = 'rgba(255,236,179,0.8)';
+        ctx.beginPath(); ctx.arc(cx, cy, this.w/2, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#FFD54F'; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.font = (this.w*0.6)+'px '+FONT.BODY;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#5D4037';
+        ctx.fillText(this.emoji, cx, cy);
+      }
+      ctx.restore();
     }
+  }
+
+  _drawStar(ctx, cx, cy, r, points) {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const angle = (i * Math.PI / points) - Math.PI / 2;
+      const rad = i % 2 === 0 ? r : r * 0.45;
+      const x = cx + Math.cos(angle) * rad;
+      const y = cy + Math.sin(angle) * rad;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
   }
 
   getHitbox() { return {x:this.x, y:this.y, w:this.w, h:this.h}; }

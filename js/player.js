@@ -309,7 +309,8 @@ class Player {
 
   // ── Draw ────────────────────────────────────────
   draw(ctx, images) {
-    if (this.invincible && Math.floor(this.invincibleTimer / 80) % 2 === 0) return;
+    // Invincible blink — use Date.now() so it works on both Host and Guest
+    if (this.invincible && Math.floor(Date.now() / 80) % 2 === 0) return;
     // Ghost mode — dead player
     const isGhost = this.hp <= 0;
     if (isGhost && !this.coopActive) return; // solo dead = don't draw

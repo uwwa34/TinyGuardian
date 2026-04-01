@@ -77,7 +77,23 @@ class Game {
           break;
         case 'peer_left':
           this.hud.addNotification('⚠️ เพื่อนออกจากห้อง');
-          if (this.state === 'COOP_LOBBY') this.coopLobby.state = 'menu';
+          if (this.state === 'COOP_LOBBY') {
+            this.coopLobby.state = 'menu';
+          } else if (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR) {
+            // Switch to solo — keep playing with remaining player
+            this.hud.addNotification('เล่นต่อคนเดียว...');
+            this.coopMode = false;
+            this.net.disconnect();
+            // If guest lost host, player2 becomes the main player
+            if (this.net.isGuest || this._wasGuest) {
+              if (this.player2 && this.player2.hp > 0) {
+                this.player.x = this.player2.x; this.player.y = this.player2.y;
+                this.player.hp = this.player2.hp; this.player.score = this.player2.score;
+              }
+            }
+            this.player2 = null;
+            this._wasGuest = false;
+          }
           break;
         case 'error':
           this.coopLobby.state = 'error';
@@ -276,12 +292,15 @@ class Game {
         for (const it of this.itemManager.items) { if (it.alive && this._aabb(p2H,it.getHitbox())) { it.alive=false; if(it.healsHp&&this.player2.hp<this.player2.maxHp)this.player2.hp++; else if(!it.healsFat&&!it.healsHp){this.player2.score+=it.points;this.player2.itemsCollected++;} } }
       }
 
-      // Send FULL state
+      // Send FULL state (including bullets + items)
       this.net.sendGameState({
         p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0},
         p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
         en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
         bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer}:null,
+        pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,c:b.charged})),
+        eb:this.projManager.enemyBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y})),
+        it:this.itemManager.items.filter(i=>i.alive).map(i=>({x:i.x,y:i.y,t:i.type,e:i.emoji})),
         ti:this.stageTimer,gs:this.state,st:this.currentStage,
       });
 
@@ -289,15 +308,16 @@ class Game {
       // ═══ GUEST: pure renderer — no physics ═══
       this.net.sendInput({left:this.input.left,right:this.input.right,btnA:this.input.btnA,btnB:this.input.btnB,jumpPressed:this.input.btnA&&!this._prevP2BtnA});
       this._prevP2BtnA = this.input.btnA;
+      this._wasGuest = true;
 
       const s = this.net.peerState;
       if (!s) return;
 
-      // Direct apply — no lerp, exact Host state
+      // Players — direct apply
       if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime;}
       if(s.p2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime;}
 
-      // Enemies — sync from Host (full replace)
+      // Enemies
       if(s.en){
         while(this.enemyManager.enemies.length<s.en.length) this.enemyManager.enemies.push(new EnemyUnit('ERASER',0,0));
         this.enemyManager.enemies.length=s.en.length;
@@ -306,6 +326,38 @@ class Game {
 
       // Boss
       if(s.bo&&this.boss){const b=this.boss,sb=s.bo;b.x=sb.x;b.y=sb.y;b.hp=sb.hp;b.maxHp=sb.mhp;b.alive=sb.a;b.dying=sb.d;b.facing=sb.f;b.state=sb.s;b.isAngry=sb.ag;b.flashTimer=sb.fl||0;}
+
+      // Player bullets — rebuild from Host data
+      if(s.pb){
+        this.projManager.playerBullets=[];
+        for(const b of s.pb){
+          const p={x:b.x,y:b.y,w:b.c?PROJ_CHARGE_W:PROJ_W,h:b.c?PROJ_CHARGE_H:PROJ_H,alive:true,charged:b.c,
+            getHitbox(){return{x:this.x,y:this.y,w:this.w,h:this.h};},
+            draw(ctx){ctx.fillStyle=b.c?COL.WARM_ORANGE:COL.PRIMARY;ctx.fillRect(this.x,this.y,this.w,this.h);}};
+          this.projManager.playerBullets.push(p);
+        }
+      }
+
+      // Enemy bullets
+      if(s.eb){
+        this.projManager.enemyBullets=[];
+        for(const b of s.eb){
+          const p={x:b.x,y:b.y,w:8,h:8,alive:true,
+            getHitbox(){return{x:this.x,y:this.y,w:this.w,h:this.h};},
+            draw(ctx){ctx.fillStyle='#EF5350';ctx.beginPath();ctx.arc(this.x+4,this.y+4,4,0,Math.PI*2);ctx.fill();}};
+          this.projManager.enemyBullets.push(p);
+        }
+      }
+
+      // Items — rebuild as real ItemUnit objects
+      if(s.it){
+        this.itemManager.items=[];
+        for(const si of s.it){
+          const it=new ItemUnit(si.t||'COIN',si.x,si.y,this.currentStage);
+          it.alive=true; it.grounded=true; // don't let them fall
+          this.itemManager.items.push(it);
+        }
+      }
 
       if(s.ti!==undefined)this.stageTimer=s.ti;
       if(s.gs&&s.gs!==this.state)this.state=s.gs;
