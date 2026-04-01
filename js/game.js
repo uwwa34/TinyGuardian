@@ -280,6 +280,14 @@ class Game {
     if (!this.player2) return;
 
     if (this.net.isHost) {
+      // Check if Guest disconnected
+      if (!this.net.connected) {
+        this.hud.addNotification('⚠️ P2 หลุด — เล่นต่อคนเดียว');
+        this.coopMode = false;
+        this.player2 = null;
+        this.player.coopActive = false;
+        return;
+      }
       // ═══ HOST: full game authority ═══
       const btnANow = this.net.peerInput.btnA;
       const jumpQ = this.net.peerInput._jumpQueued;
@@ -325,6 +333,35 @@ class Game {
 
     } else if (this.net.isGuest) {
       // ═══ GUEST: pure renderer — no physics ═══
+      if (!this.net.connected) {
+        // Lost connection — show notification and switch to solo
+        this.hud.addNotification('⚠️ หลุดจาก Host — เล่นต่อคนเดียว');
+        this.coopMode = false;
+        if (this.player2 && this.player2.hp > 0) {
+          this.player.x = this.player2.x; this.player.y = this.player2.y;
+          this.player.hp = this.player2.hp; this.player.score = this.player2.score;
+        }
+        this.player.coopActive = false;
+        this.player2 = null;
+        return;
+      }
+
+      // Track last received state — if stale > 5s, switch to solo
+      if (this.net.peerState) this._lastHostStateTime = Date.now();
+      if (!this._lastHostStateTime) this._lastHostStateTime = Date.now();
+      if (Date.now() - this._lastHostStateTime > 5000) {
+        this.hud.addNotification('⚠️ Host ไม่ตอบ — เล่นต่อคนเดียว');
+        this.coopMode = false;
+        if (this.player2 && this.player2.hp > 0) {
+          this.player.x = this.player2.x; this.player.y = this.player2.y;
+          this.player.hp = this.player2.hp; this.player.score = this.player2.score;
+        }
+        this.player.coopActive = false;
+        this.player2 = null;
+        this.net.disconnect();
+        return;
+      }
+
       this.net.sendInput({left:this.input.left,right:this.input.right,btnA:this.input.btnA,btnB:this.input.btnB,jumpPressed:this.input.btnA&&!this._prevP2BtnA});
       this._prevP2BtnA = this.input.btnA;
       this._wasGuest = true;
