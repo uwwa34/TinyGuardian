@@ -220,7 +220,10 @@ class Game {
     this.stageTimer -= dt;
     if (this.stageTimer < 0) this.stageTimer = 0;
 
-    this.player.update(dt, inputForPlayer, this.world, this);
+    // In co-op: skip dead player's update
+    if (this.player.hp > 0) {
+      this.player.update(dt, inputForPlayer, this.world, this);
+    }
     this.world.update(dt);
     this.enemyManager.update(dt, this.world, this);
     this.projManager.update(dt);
@@ -369,6 +372,7 @@ class Game {
       const s = this.net.peerState;
       if (!s) return;
 
+      try {
       // Players — direct apply
       if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime;}
       if(s.p2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime;}
@@ -427,6 +431,7 @@ class Game {
         this.state=s.gs;
       }
       if(s.st&&s.st!==this.currentStage){this.currentStage=s.st;this.world.loadStage(s.st);}
+      } catch(err) { console.error('Guest sync error:', err); }
 
       this.net.peerState=null;
     }
@@ -458,17 +463,19 @@ class Game {
       }
     }
 
-    // Enemy bullets vs player
-    for (const eb of this.projManager.enemyBullets) {
-      if (!eb.alive) continue;
-      if (this._aabb(pH, eb.getHitbox())) {
-        eb.alive = false;
-        this.player.takeDamage(this);
+    // Enemy bullets vs player (skip if dead)
+    if (this.player.hp > 0) {
+      for (const eb of this.projManager.enemyBullets) {
+        if (!eb.alive) continue;
+        if (this._aabb(pH, eb.getHitbox())) {
+          eb.alive = false;
+          this.player.takeDamage(this);
+        }
       }
     }
 
-    // Enemies contact player
-    if (!this.player.invincible) {
+    // Enemies contact player (skip if dead)
+    if (this.player.hp > 0 && !this.player.invincible) {
       for (const enemy of this.enemyManager.enemies) {
         if (enemy.dying) continue;
         if (this._aabb(pH, enemy.getHitbox())) {
@@ -602,6 +609,10 @@ class Game {
   }
 
   _goTally() {
+    // In co-op, combine scores for tally display
+    if (this.coopMode && this.player2) {
+      this.player.score += this.player2.score;
+    }
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
