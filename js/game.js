@@ -80,19 +80,22 @@ class Game {
           if (this.state === 'COOP_LOBBY') {
             this.coopLobby.state = 'menu';
           } else if (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR) {
-            // Switch to solo — keep playing with remaining player
             this.hud.addNotification('เล่นต่อคนเดียว...');
-            this.coopMode = false;
-            this.net.disconnect();
-            // If guest lost host, player2 becomes the main player
+            // If we were Guest, transfer P2→P1
             if (this.net.isGuest || this._wasGuest) {
               if (this.player2 && this.player2.hp > 0) {
                 this.player.x = this.player2.x; this.player.y = this.player2.y;
-                this.player.hp = this.player2.hp; this.player.score = this.player2.score;
+                this.player.hp = this.player2.hp; this.player.maxHp = this.player2.maxHp;
+                this.player.score = this.player2.score;
               }
             }
+            this.coopMode = false;
+            this.player.isP2 = false;
+            this.player.coopActive = false;
             this.player2 = null;
             this._wasGuest = false;
+            this._lastHostStateTime = 0;
+            this.net.disconnect();
           }
           break;
         case 'error':
@@ -120,16 +123,27 @@ class Game {
 
   _startCoopGame() {
     this.coopMode = true;
+    this._wasGuest = false;
+    this._lastHostStateTime = 0;
+    this._prevP2BtnA = false;
+    this._prevP2BtnA_host = false;
+
     this.player.reset(); this.player.maxHp = 8; this.player.hp = 8;
     this.player.coopActive = true;
+    this.player.isP2 = false;  // Ensure P1 looks like P1
+
     this.player2 = new Player();
     this.player2.reset(); this.player2.maxHp = 8; this.player2.hp = 8;
     this.player2.isP2 = true;
     this.player2.coopActive = true;
-    // P2 starts on right side
     this.player2.x = WIDTH - PLAYER_W - 30;
+
+    this.boss = null;
     this.currentStage = 1; this.currentWave = 0;
     this.stagesCleared = 0; this.timeBonuses = [];
+    this.particles = [];
+    this._stageClearing = false;
+
     this._startStage(1);
     this.state = STATE.PLAYING;
   }
@@ -328,7 +342,7 @@ class Game {
         p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
         en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
         bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer,fin:this.boss.isFinal}:null,
-        pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,c:b.charged})),
+        pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,d:b.dir,c:b.charged})),
         eb:this.projManager.enemyBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y})),
         it:this.itemManager.items.filter(i=>i.alive).map(i=>({x:i.x,y:i.y,t:i.type,e:i.emoji})),
         ti:this.stageTimer,gs:this.state,st:this.currentStage,
@@ -337,15 +351,21 @@ class Game {
     } else if (this.net.isGuest) {
       // ═══ GUEST: pure renderer — no physics ═══
       if (!this.net.connected) {
-        // Lost connection — show notification and switch to solo
         this.hud.addNotification('⚠️ หลุดจาก Host — เล่นต่อคนเดียว');
         this.coopMode = false;
+        // Transfer P2 state to P1 properly
         if (this.player2 && this.player2.hp > 0) {
           this.player.x = this.player2.x; this.player.y = this.player2.y;
-          this.player.hp = this.player2.hp; this.player.score = this.player2.score;
+          this.player.hp = this.player2.hp; this.player.maxHp = this.player2.maxHp;
+          this.player.score = this.player2.score;
+          this.player.vy = this.player2.vy;
+          this.player.grounded = this.player2.grounded;
         }
+        this.player.isP2 = false;  // Reset to P1 appearance
         this.player.coopActive = false;
         this.player2 = null;
+        this.net.disconnect();
+        this._lastHostStateTime = 0;
         return;
       }
 
@@ -357,11 +377,14 @@ class Game {
         this.coopMode = false;
         if (this.player2 && this.player2.hp > 0) {
           this.player.x = this.player2.x; this.player.y = this.player2.y;
-          this.player.hp = this.player2.hp; this.player.score = this.player2.score;
+          this.player.hp = this.player2.hp; this.player.maxHp = this.player2.maxHp;
+          this.player.score = this.player2.score;
         }
+        this.player.isP2 = false;
         this.player.coopActive = false;
         this.player2 = null;
         this.net.disconnect();
+        this._lastHostStateTime = 0;
         return;
       }
 
@@ -396,11 +419,11 @@ class Game {
         this.boss=null;
       }
 
-      // Player bullets — use real Projectile objects
+      // Player bullets
       if(s.pb){
         this.projManager.playerBullets=s.pb.map(b=>{
-          const pb=new Projectile(b.x,b.y,1,b.c,0);
-          pb.x=b.x;pb.y=b.y;pb.trail=[];
+          const pb=new Projectile(b.x,b.y,b.d||1,b.c,0);
+          pb.trail=[];
           return pb;
         });
       }
@@ -609,13 +632,20 @@ class Game {
   }
 
   _goTally() {
-    // In co-op, combine scores for tally display
+    // In co-op, combine P1+P2 scores
     if (this.coopMode && this.player2) {
-      this.player.score += this.player2.score;
+      const combined = this.player.score + this.player2.score;
+      this.player.score = combined;
     }
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
+    // Clean up co-op for tally screen
+    if (this.coopMode) {
+      this.coopMode = false;
+      this.player2 = null;
+      this.player.coopActive = false;
+    }
   }
 
   spawnProjectile(x, y, dir, charged, angleY) {
@@ -1034,6 +1064,10 @@ class Game {
   playSfx(key) {
     const snd = this.sounds[key];
     if (!snd) return;
+    // Send sfx to Guest so they hear sounds too
+    if (this.coopMode && this.net && this.net.isHost && this.net.connected) {
+      this.net.sendEvent('sfx', { name: key });
+    }
     try {
       if (snd._sfxBuf) {
         if (!this._audioCtx) this._audioCtx = window._audioCtx || new (window.AudioContext||window.webkitAudioContext)();
