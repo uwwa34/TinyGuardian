@@ -341,11 +341,11 @@ class Game {
         p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0},
         p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
         en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
-        bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer,fin:this.boss.isFinal}:null,
+        bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer,fin:this.boss.isFinal,ph:this.boss.phase}:null,
         pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,d:b.dir,c:b.charged})),
         eb:this.projManager.enemyBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y})),
-        it:this.itemManager.items.filter(i=>i.alive).map(i=>({x:i.x,y:i.y,t:i.type,e:i.emoji})),
-        ti:this.stageTimer,gs:this.state,st:this.currentStage,
+        it:this.itemManager.items.filter(i=>i.alive).map(i=>({x:i.x,y:i.y,t:i.type})),
+        ti:this.stageTimer,gs:this.state,st:this.currentStage,sc:this.stagesCleared,
       });
 
     } else if (this.net.isGuest) {
@@ -395,66 +395,111 @@ class Game {
       const s = this.net.peerState;
       if (!s) return;
 
-      try {
-      // Players — direct apply
-      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime;}
-      if(s.p2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime;}
+      // ── Players ──
+      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime||0;}
+      if(s.p2&&this.player2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime||0;}
 
-      // Enemies
+      // ── Enemies ──
       if(s.en){
         while(this.enemyManager.enemies.length<s.en.length) this.enemyManager.enemies.push(new EnemyUnit('ERASER',0,0));
         this.enemyManager.enemies.length=s.en.length;
-        for(let i=0;i<s.en.length;i++){const e=this.enemyManager.enemies[i],se=s.en[i];e.x=se.x;e.y=se.y;e.alive=se.a;e.dying=se.d;e.angry=se.g;e.facing=se.f;e.dieTimer=se.dt||0;e.spawnShield=0;if(se.t&&ENEMY[se.t]){e.type=se.t;e.def=ENEMY[se.t];e.w=e.def.w;e.h=e.def.h;}}
+        for(let i=0;i<s.en.length;i++){
+          const e=this.enemyManager.enemies[i],se=s.en[i];
+          e.x=se.x;e.y=se.y;e.alive=se.a;e.dying=se.d;e.angry=se.g;e.facing=se.f;e.dieTimer=se.dt||0;e.spawnShield=0;
+          if(se.t&&ENEMY[se.t]){e.type=se.t;e.def=ENEMY[se.t];e.w=e.def.w;e.h=e.def.h;}
+        }
       }
 
-      // Boss — create if Host has boss but Guest doesn't
+      // ── Boss ──
       if(s.bo){
         if(!this.boss){
-          const cfg=s.bo.fin?BOSS:MINIBOSS;
-          this.boss=new BossUnit(cfg,s.bo.x,s.bo.y,!!s.bo.fin);
+          try{
+            const cfg=s.bo.fin?BOSS:MINIBOSS;
+            this.boss=new BossUnit(cfg,s.bo.x,s.bo.y,!!s.bo.fin);
+          }catch(e){console.error('Boss create err:',e);}
         }
-        const b=this.boss,sb=s.bo;
-        b.x=sb.x;b.y=sb.y;b.hp=sb.hp;b.maxHp=sb.mhp;b.alive=sb.a;b.dying=sb.d;b.facing=sb.f;b.state=sb.s;b.isAngry=sb.ag;b.flashTimer=sb.fl||0;
-      } else {
+        if(this.boss){
+          const b=this.boss,sb=s.bo;
+          b.x=sb.x;b.y=sb.y;b.hp=sb.hp;b.maxHp=sb.mhp;b.alive=sb.a;b.dying=sb.d;b.facing=sb.f;b.state=sb.s;b.flashTimer=sb.fl||0;
+          // phase for final boss
+          if(sb.ph!==undefined)b.phase=sb.ph;
+        }
+      } else if(s.bo===null) {
         this.boss=null;
       }
 
-      // Player bullets
-      if(s.pb){
-        this.projManager.playerBullets=s.pb.map(b=>{
-          const pb=new Projectile(b.x,b.y,b.d||1,b.c,0);
-          pb.trail=[];
-          return pb;
-        });
-      }
-
-      // Enemy bullets — use real EnemyProjectile objects
-      if(s.eb){
-        this.projManager.enemyBullets=s.eb.map(b=>{
-          const eb=new EnemyProjectile(b.x,b.y,0,0,'normal');
-          eb.x=b.x;eb.y=b.y;
-          return eb;
-        });
-      }
-
-      // Items — rebuild as real ItemUnit objects
-      if(s.it){
-        this.itemManager.items=s.it.map(si=>{
-          const it=new ItemUnit(si.t||'COIN',si.x,si.y,this.currentStage);
-          it.alive=true;it.grounded=true;
-          return it;
-        });
-      }
-
-      if(s.ti!==undefined)this.stageTimer=s.ti;
-      if(s.gs&&s.gs!==this.state){
-        if(s.gs===STATE.GAME_OVER&&this.state!==STATE.GAME_OVER){
-          this.stageClearTimer=2.5;
+      // ── Player bullets (always sync, independent from boss) ──
+      if(s.pb!==undefined){
+        this.projManager.playerBullets=[];
+        for(const b of s.pb){
+          try{
+            const pb=new Projectile(b.x,b.y,b.d||1,b.c,0);
+            pb.trail=[];
+            this.projManager.playerBullets.push(pb);
+          }catch(e){}
         }
-        this.state=s.gs;
       }
-      if(s.st&&s.st!==this.currentStage){this.currentStage=s.st;this.world.loadStage(s.st);}
-      } catch(err) { console.error('Guest sync error:', err); }
+
+      // ── Enemy bullets ──
+      if(s.eb!==undefined){
+        this.projManager.enemyBullets=[];
+        for(const b of s.eb){
+          try{
+            const eb=new EnemyProjectile(b.x,b.y,0,0,'normal');
+            eb.x=b.x;eb.y=b.y;
+            this.projManager.enemyBullets.push(eb);
+          }catch(e){}
+        }
+      }
+
+      // ── Items ──
+      if(s.it!==undefined){
+        this.itemManager.items=[];
+        for(const si of s.it){
+          try{
+            const it=new ItemUnit(si.t||'COIN',si.x,si.y,this.currentStage);
+            it.alive=true;it.grounded=true;
+            this.itemManager.items.push(it);
+          }catch(e){}
+        }
+      }
+
+      // ── Timer ──
+      if(s.ti!==undefined) this.stageTimer=s.ti;
+
+      // ── Stage change ──
+      if(s.st&&s.st!==this.currentStage){
+        this.currentStage=s.st;
+        this.world.loadStage(s.st);
+        this.boss=null;
+      }
+
+      // ── Game state transition (the critical part) ──
+      if(s.gs && s.gs!==this.state){
+        const newState=s.gs;
+        if(newState===STATE.STAGE_CLEAR){
+          this.state=STATE.STAGE_CLEAR;
+          this.stageClearTimer=2.5;
+          this.hud.addNotification('✨ Stage Clear!');
+        } else if(newState===STATE.GAME_OVER){
+          this.state=STATE.GAME_OVER;
+          this.stageClearTimer=2.5;
+        } else if(newState===STATE.TALLY){
+          // Guest also goes to tally — use combined score
+          if(this.player2){
+            this.player.score = (s.p1?s.p1.score:this.player.score) + (s.p2?s.p2.score:0);
+          }
+          this.tally.init(this.player, this.stagesCleared||s.sc||0, this.timeBonuses||[]);
+          this.state=STATE.TALLY;
+          this._inputLock=800;
+          this.coopMode=false;this.player2=null;this.player.coopActive=false;
+        } else {
+          this.state=newState;
+        }
+      }
+
+      // ── Stages cleared count from Host ──
+      if(s.sc!==undefined) this.stagesCleared=s.sc;
 
       this.net.peerState=null;
     }
@@ -632,15 +677,28 @@ class Game {
   }
 
   _goTally() {
-    // In co-op, combine P1+P2 scores
-    if (this.coopMode && this.player2) {
+    // In co-op Host: send TALLY state + combined score to Guest BEFORE cleanup
+    if (this.coopMode && this.player2 && this.net && this.net.isHost && this.net.connected) {
       const combined = this.player.score + this.player2.score;
+      // Send final state with TALLY + combined score
+      this.net.sendGameState({
+        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:combined,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0},
+        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0},
+        en:[],bo:null,pb:[],eb:[],it:[],
+        ti:0,gs:STATE.TALLY,st:this.currentStage,sc:this.stagesCleared,
+      });
+      // Force send immediately
+      this.net.lastSentState = 0;
       this.player.score = combined;
+    } else if (this.coopMode && this.player2) {
+      this.player.score += this.player2.score;
     }
+
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
-    // Clean up co-op for tally screen
+
+    // Cleanup co-op AFTER sending tally state
     if (this.coopMode) {
       this.coopMode = false;
       this.player2 = null;
