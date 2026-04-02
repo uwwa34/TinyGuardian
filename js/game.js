@@ -392,19 +392,19 @@ class Game {
         this.boss=null;
       }
 
-      // Player bullets — use real PlayerBullet objects
+      // Player bullets — use real Projectile objects
       if(s.pb){
         this.projManager.playerBullets=s.pb.map(b=>{
-          const pb=new PlayerBullet(b.x,b.y,1,b.c);
+          const pb=new Projectile(b.x,b.y,1,b.c,0);
           pb.x=b.x;pb.y=b.y;pb.trail=[];
           return pb;
         });
       }
 
-      // Enemy bullets — use real EnemyBullet objects
+      // Enemy bullets — use real EnemyProjectile objects
       if(s.eb){
         this.projManager.enemyBullets=s.eb.map(b=>{
-          const eb=new EnemyBullet(b.x,b.y,0,0,'normal');
+          const eb=new EnemyProjectile(b.x,b.y,0,0,'normal');
           eb.x=b.x;eb.y=b.y;
           return eb;
         });
