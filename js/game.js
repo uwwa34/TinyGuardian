@@ -495,11 +495,14 @@ class Game {
           this.state=STATE.GAME_OVER;
           this.stageClearTimer=2.5;
         } else if(newState===STATE.TALLY){
-          // Guest also goes to tally — use combined score
-          if(this.player2){
-            this.player.score = (s.p1?s.p1.score:this.player.score) + (s.p2?s.p2.score:0);
+          // Guest tally — use Host's merged data
+          if(s.p1){
+            this.player.score = s.p1.score;
+            if(s.p1.kills!==undefined) this.player.kills = s.p1.kills;
+            if(s.p1.items!==undefined) this.player.itemsCollected = s.p1.items;
           }
-          this.tally.init(this.player, this.stagesCleared||s.sc||0, this.timeBonuses||[]);
+          this.stagesCleared = s.sc || this.stagesCleared || 0;
+          this.tally.init(this.player, this.stagesCleared, this.timeBonuses||[]);
           this.state=STATE.TALLY;
           this._inputLock=800;
           this.coopMode=false;this.player2=null;this.player.coopActive=false;
@@ -691,28 +694,30 @@ class Game {
   }
 
   _goTally() {
-    // In co-op Host: send TALLY state + combined score to Guest BEFORE cleanup
-    if (this.coopMode && this.player2 && this.net && this.net.isHost && this.net.connected) {
-      const combined = this.player.score + this.player2.score;
-      // Send final state with TALLY + combined score
-      this.net.sendGameState({
-        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:combined,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0},
-        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0},
-        en:[],bo:null,pb:[],eb:[],it:[],
-        ti:0,gs:STATE.TALLY,st:this.currentStage,sc:this.stagesCleared,
-      });
-      // Force send immediately
-      this.net.lastSentState = 0;
-      this.player.score = combined;
-    } else if (this.coopMode && this.player2) {
+    // In co-op Host: merge P2 stats into P1 + send to Guest
+    if (this.coopMode && this.player2) {
       this.player.score += this.player2.score;
+      this.player.kills += this.player2.kills || 0;
+      this.player.itemsCollected += this.player2.itemsCollected || 0;
+
+      // Send final TALLY state to Guest
+      if (this.net && this.net.isHost && this.net.connected) {
+        this.net.sendGameState({
+          p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0,
+              kills:this.player.kills,items:this.player.itemsCollected},
+          p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:'idle',score:this.player2.score,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0},
+          en:[],bo:null,pb:[],eb:[],it:[],
+          ti:0,gs:STATE.TALLY,st:this.currentStage,sc:this.stagesCleared,
+        });
+        this.net.lastSentState = 0;
+      }
     }
 
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
 
-    // Cleanup co-op AFTER sending tally state
+    // Cleanup co-op
     if (this.coopMode) {
       this.coopMode = false;
       this.player2 = null;
@@ -1159,18 +1164,26 @@ class Game {
   playSfx(key) {
     const snd = this.sounds[key];
     if (!snd) return;
-    // Send sfx to Guest so they hear sounds too
+    // Send sfx to Guest
     if (this.coopMode && this.net && this.net.isHost && this.net.connected) {
       this.net.sendEvent('sfx', { name: key });
     }
     try {
+      // Ensure AudioContext exists and is resumed (iOS requires this)
+      if (!this._audioCtx) this._audioCtx = window._audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+      if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
+
       if (snd._sfxBuf) {
-        if (!this._audioCtx) this._audioCtx = window._audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-        const ctx = this._audioCtx;
-        if (!this._sfxCache[key]) {
-          const buf = snd._sfxBuf.slice(0);
-          ctx.decodeAudioData(buf, decoded => { this._sfxCache[key]=decoded; this._playSfxBuf(decoded); });
-        } else { this._playSfxBuf(this._sfxCache[key]); }
+        if (this._sfxCache[key]) {
+          this._playSfxBuf(this._sfxCache[key]);
+        } else {
+          // Decode from a fresh copy of the buffer
+          const copy = snd._sfxBuf.slice(0);
+          this._audioCtx.decodeAudioData(copy, decoded => {
+            this._sfxCache[key] = decoded;
+            this._playSfxBuf(decoded);
+          }, ()=>{});
+        }
       } else if (snd instanceof Audio) {
         const clone = snd.cloneNode(); clone.volume=0.6; clone.play().catch(()=>{});
       }
@@ -1178,13 +1191,33 @@ class Game {
   }
 
   _playSfxBuf(decoded) {
-    const ctx = this._audioCtx;
-    const src = ctx.createBufferSource(); src.buffer = decoded;
-    const gain = ctx.createGain(); gain.gain.value = 0.6;
-    src.connect(gain).connect(ctx.destination); src.start(0);
+    try {
+      const ctx = this._audioCtx;
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      const src = ctx.createBufferSource(); src.buffer = decoded;
+      const gain = ctx.createGain(); gain.gain.value = 0.6;
+      src.connect(gain).connect(ctx.destination); src.start(0);
+    } catch(e) {}
   }
 
+  // Called by iOS unlock handler — pre-decode ALL sounds
   _unlockAudio() {
+    if (!this._audioCtx) this._audioCtx = window._audioCtx;
     if (this._audioCtx && this._audioCtx.state === 'suspended') this._audioCtx.resume();
+    // Pre-decode all SFX buffers
+    if (this._audioCtx && this.sounds) {
+      for (const key of Object.keys(this.sounds)) {
+        const snd = this.sounds[key];
+        if (snd && snd._sfxBuf && !this._sfxCache[key]) {
+          try {
+            const copy = snd._sfxBuf.slice(0);
+            this._audioCtx.decodeAudioData(copy, decoded => {
+              this._sfxCache[key] = decoded;
+            }, ()=>{});
+          } catch(e) {}
+        }
+      }
+    }
   }
 }
