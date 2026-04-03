@@ -773,7 +773,7 @@ class Game {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    const titleY = 180 + Math.sin(this.introTimer*2)*8;
+    const titleY = 140 + Math.sin(this.introTimer*2)*8;
     ctx.font = '36px '+FONT.MAIN; ctx.textAlign = 'center';
     ctx.strokeStyle = COL.PRIMARY; ctx.lineWidth = 4;
     ctx.fillStyle = COL.COCOA;
@@ -781,19 +781,18 @@ class Game {
     ctx.strokeText('GUARDIAN', WIDTH/2, titleY+46); ctx.fillText('GUARDIAN', WIDTH/2, titleY+46);
 
     ctx.font = '14px '+FONT.BODY;
-    ctx.fillText('— ผู้พิทักษ์ตัวจิ๋ว —', WIDTH/2, titleY+80);
+    ctx.fillText('— ผู้พิทักษ์ตัวจิ๋ว —', WIDTH/2, titleY+78);
 
-    // Player character — draw using the actual player draw method
+    // Player character
     ctx.save();
-    const py = 360+Math.sin(this.introTimer*3)*5;
-    // Temporarily position and scale the player for drawing
+    const py = 300+Math.sin(this.introTimer*3)*5;
     const savedX = this.player.x, savedY = this.player.y;
     this.player.x = WIDTH/2 - PLAYER_W*0.75;
     this.player.y = py;
     this.player.state = 'idle';
     this.player.facing = 1;
     ctx.save();
-    const sc = 1.5;
+    const sc = 1.3;
     ctx.translate(WIDTH/2, py + PLAYER_H/2);
     ctx.scale(sc, sc);
     ctx.translate(-PLAYER_W/2, -PLAYER_H/2);
@@ -810,17 +809,17 @@ class Game {
     this.player.x = savedX; this.player.y = savedY;
     ctx.restore();
 
-    ctx.font = '15px '+FONT.BODY; ctx.fillStyle = COL.COCOA;
-    ctx.fillText('ปกป้องโลกจากเหล่าวายร้ายกัน!', WIDTH/2, 430);
+    ctx.font = '14px '+FONT.BODY; ctx.fillStyle = COL.COCOA;
+    ctx.fillText('ปกป้องโลกจากเหล่าวายร้ายกัน!', WIDTH/2, 395);
 
     // Difficulty selector
     ctx.font = '12px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('ระดับความยาก:', WIDTH/2, 462);
+    ctx.fillText('ระดับความยาก:', WIDTH/2, 422);
     const diffs = [['EASY','🟢 ง่าย'],['MEDIUM','🟡 ปกติ'],['HARD','🔴 ยาก']];
-    const dw=75, dh=32, dg=8, dx0=(WIDTH-(dw*3+dg*2))/2;
+    const dw=75, dh=30, dg=8, dx0=(WIDTH-(dw*3+dg*2))/2;
     for(let i=0;i<3;i++){
-      const x=dx0+i*(dw+dg), y=475;
+      const x=dx0+i*(dw+dg), y=434;
       const sel=this.difficulty===DIFFICULTY[diffs[i][0]];
       ctx.fillStyle=sel?COL.PRIMARY:'rgba(255,236,179,0.6)';
       _rr(ctx,x,y,dw,dh,8);ctx.fill();
@@ -831,18 +830,18 @@ class Game {
 
     // Solo play button
     ctx.fillStyle = COL.PRIMARY;
-    _rr(ctx, WIDTH/2-120, 520, 240, 44, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 520, 240, 44, 14); ctx.stroke();
+    _rr(ctx, WIDTH/2-120, 478, 240, 42, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 478, 240, 42, 14); ctx.stroke();
     ctx.font = '15px '+FONT.MAIN; ctx.fillStyle = COL.HUD_TEXT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 542);
+    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 499);
 
     // Co-op button
     ctx.fillStyle = COL.SKY_BLUE;
-    _rr(ctx, WIDTH/2-120, 575, 240, 44, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 575, 240, 44, 14); ctx.stroke();
+    _rr(ctx, WIDTH/2-120, 530, 240, 42, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 530, 240, 42, 14); ctx.stroke();
     ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 597);
+    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 551);
 
     ctx.font = '24px '+FONT.BODY; ctx.textAlign = 'center';
     ctx.fillText('⭐', 50, 120+Math.sin(this.introTimer*1.5)*10);
@@ -1005,17 +1004,17 @@ class Game {
   }
 
   _handleIntroTap(pos) {
-    // Difficulty buttons: y 475-507
-    if (pos.y >= 475 && pos.y <= 507) {
+    // Difficulty buttons: y 434-464
+    if (pos.y >= 434 && pos.y <= 464) {
       const dw=75, dg=8, dx0=(WIDTH-(dw*3+dg*2))/2;
       if (pos.x >= dx0 && pos.x <= dx0+dw) { this.difficulty = DIFFICULTY.EASY; return true; }
       if (pos.x >= dx0+dw+dg && pos.x <= dx0+dw*2+dg) { this.difficulty = DIFFICULTY.MEDIUM; return true; }
       if (pos.x >= dx0+dw*2+dg*2 && pos.x <= dx0+dw*3+dg*2) { this.difficulty = DIFFICULTY.HARD; return true; }
     }
-    // Solo button: y 520-564
-    if (pos.y >= 520 && pos.y <= 564) { this._startGame(); return true; }
-    // Co-op button: y 575-619
-    if (pos.y >= 575 && pos.y <= 619) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
+    // Solo button: y 478-520
+    if (pos.y >= 478 && pos.y <= 520) { this._startGame(); return true; }
+    // Co-op button: y 530-572
+    if (pos.y >= 530 && pos.y <= 572) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
     return false;
   }
 

@@ -263,22 +263,31 @@ class CoopLobbyUI {
 
     } else if (this.state === 'ready') {
       ctx.font = '22px '+FONT.MAIN; ctx.fillStyle = COL.GOLD;
-      ctx.fillText('✨ เพื่อนเข้าร่วมแล้ว! ✨', WIDTH/2, 220);
+      ctx.fillText('✨ เพื่อนเข้าร่วมแล้ว! ✨', WIDTH/2, 200);
       ctx.font = '14px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
-      ctx.fillText('ห้อง: '+this.roomCode, WIDTH/2, 260);
-      ctx.font = '28px '+FONT.MAIN; ctx.fillStyle = COL.PRIMARY_D;
-      ctx.fillText('🟡 Player 1', WIDTH/2-70, 320);
-      ctx.fillText('🔵 Player 2', WIDTH/2+70, 320);
-      this._drawBtn(ctx, WIDTH/2-120, 400, 240, 56, '🎮 เริ่มเกม!', COL.PRIMARY);
+      ctx.fillText('ห้อง: '+this.roomCode, WIDTH/2, 235);
+      // P1/P2 vertical layout
+      ctx.font = '18px '+FONT.MAIN;
+      ctx.fillStyle = '#F9A825';
+      ctx.fillText('🟡 Player 1 — Left', WIDTH/2, 290);
+      ctx.fillStyle = '#42A5F5';
+      ctx.fillText('🔵 Player 2 — Right', WIDTH/2, 325);
+      this._drawBtn(ctx, WIDTH/2-120, 380, 240, 56, '🎮 เริ่มเกม!', COL.PRIMARY);
 
     } else if (this.state === 'guest_ready') {
       ctx.font = '22px '+FONT.MAIN; ctx.fillStyle = COL.GOLD;
-      ctx.fillText('✨ เข้าห้องสำเร็จ! ✨', WIDTH/2, 220);
+      ctx.fillText('✨ เข้าห้องสำเร็จ! ✨', WIDTH/2, 200);
       ctx.font = '14px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
-      ctx.fillText('ห้อง: '+this.roomCode, WIDTH/2, 260);
-      ctx.fillText('คุณเป็น Player 2 🔵', WIDTH/2, 300);
+      ctx.fillText('ห้อง: '+this.roomCode, WIDTH/2, 235);
+      // Show role
+      ctx.font = '18px '+FONT.MAIN;
+      ctx.fillStyle = '#F9A825';
+      ctx.fillText('🟡 Player 1 — Left', WIDTH/2, 290);
+      ctx.fillStyle = '#42A5F5';
+      ctx.fillText('🔵 Player 2 — Right (คุณ)', WIDTH/2, 325);
       const dots = '.'.repeat(Math.floor(this.dotAnim*2) % 4);
-      ctx.fillText('รอ Host เริ่มเกม'+dots, WIDTH/2, 340);
+      ctx.font = '14px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
+      ctx.fillText('รอ Host เริ่มเกม'+dots, WIDTH/2, 370);
 
     } else if (this.state === 'error') {
       ctx.font = '16px '+FONT.BODY; ctx.fillStyle = COL.HEART_ON;
@@ -345,7 +354,7 @@ class CoopLobbyUI {
         }
       }
     } else if (this.state === 'ready') {
-      if (ty >= 400 && ty <= 456) { return 'start'; }
+      if (ty >= 380 && ty <= 436) { return 'start'; }
     } else if (this.state === 'error') {
       if (ty >= HEIGHT/2+30 && ty <= HEIGHT/2+74) { this.state = 'menu'; return null; }
     }
