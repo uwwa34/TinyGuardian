@@ -37,6 +37,7 @@ class Game {
     this.timeBonuses = [];
     this.stageClearTimer = 0;
     this._stageClearing = false;
+    this.difficulty = DIFFICULTY.MEDIUM; // default
 
     this.input = { left:false, right:false, btnA:false, btnB:false };
     this._prevBtnA = false;
@@ -128,12 +129,13 @@ class Game {
     this._prevP2BtnA = false;
     this._prevP2BtnA_host = false;
 
-    this.player.reset(); this.player.maxHp = 8; this.player.hp = 8;
+    const chp = this.difficulty.coopHp;
+    this.player.reset(); this.player.maxHp = chp; this.player.hp = chp;
     this.player.coopActive = true;
     this.player.isP2 = false;  // Ensure P1 looks like P1
 
     this.player2 = new Player();
-    this.player2.reset(); this.player2.maxHp = 8; this.player2.hp = 8;
+    this.player2.reset(); this.player2.maxHp = chp; this.player2.hp = chp;
     this.player2.isP2 = true;
     this.player2.coopActive = true;
     this.player2.x = WIDTH - PLAYER_W - 30;
@@ -191,15 +193,23 @@ class Game {
         if (this.coopMode && this.player2) this._updateCoop(dt);
         break;
       case STATE.STAGE_CLEAR:
-        this.stageClearTimer -= dt;
-        if (this.stageClearTimer <= 0) {
-          if (this.currentStage > 4) this._goTally();
-          else this._startStage(this.currentStage);
+        // Guest: DON'T run timer — wait for Host to send next state
+        if (!(this.coopMode && this.net && this.net.isGuest)) {
+          this.stageClearTimer -= dt;
+          if (this.stageClearTimer <= 0) {
+            if (this.currentStage > 4) this._goTally();
+            else this._startStage(this.currentStage);
+          }
         }
+        // Guest still syncs via _updateCoop
+        if (this.coopMode && this.player2) this._updateCoop(dt);
         break;
       case STATE.GAME_OVER:
-        this.stageClearTimer -= dt;
-        if (this.stageClearTimer <= 0) this._goTally();
+        if (!(this.coopMode && this.net && this.net.isGuest)) {
+          this.stageClearTimer -= dt;
+          if (this.stageClearTimer <= 0) this._goTally();
+        }
+        if (this.coopMode && this.player2) this._updateCoop(dt);
         break;
       case STATE.TALLY:  this.tally.update(dt); break;
       case STATE.NAME:   this.nameScreen.update(dt); break;
@@ -613,7 +623,7 @@ class Game {
   _startStage(num) {
     this.currentStage = num;
     this.currentWave = 0;
-    this.waveDelay = 1200;
+    this.waveDelay = Math.floor(1200 * (this.difficulty ? this.difficulty.spawnDelayMult : 1));
     this.stageTimer = STAGE_TIME[num] || 90;
     this.boss = null;
     this._stageClearing = false;
@@ -651,11 +661,15 @@ class Game {
       const plats = this.world.platforms;
       const p = plats[Math.floor(Math.random() * plats.length)];
       this.boss = new BossUnit(MINIBOSS, p.x + p.w/2 - MINIBOSS.w/2, p.y - MINIBOSS.h, false);
+      this.boss.hp = Math.ceil(this.boss.hp * this.difficulty.bossHpMult);
+      this.boss.maxHp = this.boss.hp;
       this.hud.addNotification('⚠️ ' + MINIBOSS.name + ' ปรากฏตัว!');
       this.playSfx('boss_warning');
     } else if (waveData === 'BOSS') {
       const topPlat = this.world.platforms.reduce((a, b) => a.y < b.y ? a : b);
       this.boss = new BossUnit(BOSS, topPlat.x + topPlat.w/2 - BOSS.w/2, topPlat.y - BOSS.h, true);
+      this.boss.hp = Math.ceil(this.boss.hp * this.difficulty.bossHpMult);
+      this.boss.maxHp = this.boss.hp;
       this.hud.addNotification('⚠️ ' + BOSS.name + ' มาแล้ว!');
       this.playSfx('boss_warning');
     } else {
@@ -797,22 +811,38 @@ class Game {
     ctx.restore();
 
     ctx.font = '15px '+FONT.BODY; ctx.fillStyle = COL.COCOA;
-    ctx.fillText('ปกป้องโลกจากเหล่าวายร้ายกัน!', WIDTH/2, 490);
+    ctx.fillText('ปกป้องโลกจากเหล่าวายร้ายกัน!', WIDTH/2, 430);
+
+    // Difficulty selector
+    ctx.font = '12px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('ระดับความยาก:', WIDTH/2, 462);
+    const diffs = [['EASY','🟢 ง่าย'],['MEDIUM','🟡 ปกติ'],['HARD','🔴 ยาก']];
+    const dw=75, dh=32, dg=8, dx0=(WIDTH-(dw*3+dg*2))/2;
+    for(let i=0;i<3;i++){
+      const x=dx0+i*(dw+dg), y=475;
+      const sel=this.difficulty===DIFFICULTY[diffs[i][0]];
+      ctx.fillStyle=sel?COL.PRIMARY:'rgba(255,236,179,0.6)';
+      _rr(ctx,x,y,dw,dh,8);ctx.fill();
+      if(sel){ctx.strokeStyle=COL.PRIMARY_D;ctx.lineWidth=2;_rr(ctx,x,y,dw,dh,8);ctx.stroke();}
+      ctx.fillStyle=sel?'#FFF':COL.HUD_TEXT;ctx.font=(sel?'bold ':'')+' 11px '+FONT.MAIN;
+      ctx.fillText(diffs[i][1],x+dw/2,y+dh/2);
+    }
 
     // Solo play button
     ctx.fillStyle = COL.PRIMARY;
-    _rr(ctx, WIDTH/2-120, 520, 240, 46, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 520, 240, 46, 14); ctx.stroke();
-    ctx.font = '16px '+FONT.MAIN; ctx.fillStyle = COL.HUD_TEXT;
+    _rr(ctx, WIDTH/2-120, 520, 240, 44, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 520, 240, 44, 14); ctx.stroke();
+    ctx.font = '15px '+FONT.MAIN; ctx.fillStyle = COL.HUD_TEXT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 543);
+    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 542);
 
     // Co-op button
     ctx.fillStyle = COL.SKY_BLUE;
-    _rr(ctx, WIDTH/2-120, 580, 240, 46, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 580, 240, 46, 14); ctx.stroke();
+    _rr(ctx, WIDTH/2-120, 575, 240, 44, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 575, 240, 44, 14); ctx.stroke();
     ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 603);
+    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 597);
 
     ctx.font = '24px '+FONT.BODY; ctx.textAlign = 'center';
     ctx.fillText('⭐', 50, 120+Math.sin(this.introTimer*1.5)*10);
@@ -975,10 +1005,17 @@ class Game {
   }
 
   _handleIntroTap(pos) {
-    // Solo button: y 520-566
-    if (pos.y >= 520 && pos.y <= 566) { this._startGame(); return true; }
-    // Co-op button: y 580-626
-    if (pos.y >= 580 && pos.y <= 626) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
+    // Difficulty buttons: y 475-507
+    if (pos.y >= 475 && pos.y <= 507) {
+      const dw=75, dg=8, dx0=(WIDTH-(dw*3+dg*2))/2;
+      if (pos.x >= dx0 && pos.x <= dx0+dw) { this.difficulty = DIFFICULTY.EASY; return true; }
+      if (pos.x >= dx0+dw+dg && pos.x <= dx0+dw*2+dg) { this.difficulty = DIFFICULTY.MEDIUM; return true; }
+      if (pos.x >= dx0+dw*2+dg*2 && pos.x <= dx0+dw*3+dg*2) { this.difficulty = DIFFICULTY.HARD; return true; }
+    }
+    // Solo button: y 520-564
+    if (pos.y >= 520 && pos.y <= 564) { this._startGame(); return true; }
+    // Co-op button: y 575-619
+    if (pos.y >= 575 && pos.y <= 619) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
     return false;
   }
 
@@ -1081,12 +1118,13 @@ class Game {
 
   // ── State Transitions ──────────────────────────────
   _startGame() {
-    // Clean up co-op state
     this.coopMode = false;
     this.player2 = null;
     this.net.disconnect();
 
     this.player.reset();
+    this.player.maxHp = this.difficulty.playerHp;
+    this.player.hp = this.difficulty.playerHp;
     this.player.coopActive = false;
     this.stagesCleared = 0;
     this.timeBonuses = [];

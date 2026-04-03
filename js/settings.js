@@ -33,6 +33,14 @@ const GRAVITY=1500, JUMP_VEL=-620, JUMP_VEL_MIN=-340, JUMP_HOLD_MS=180;
 // ── Player ───────────────────────────────────────────
 const PLAYER_W=52, PLAYER_H=60, PLAYER_SPEED=180, PLAYER_HP=10, INVINCIBLE_MS=1500;
 
+// ── Difficulty Settings ──────────────────────────────
+// Current = MEDIUM. Apply multipliers in game.js based on selection.
+const DIFFICULTY = {
+  EASY:   { label:'ง่าย',   labelEn:'Easy',   enemyHpMult:0.7, enemySpeedMult:0.8, playerHp:12, coopHp:10, bossHpMult:0.6, spawnDelayMult:1.4 },
+  MEDIUM: { label:'ปกติ',   labelEn:'Medium', enemyHpMult:1.0, enemySpeedMult:1.0, playerHp:10, coopHp:8,  bossHpMult:1.0, spawnDelayMult:1.0 },
+  HARD:   { label:'ยาก',    labelEn:'Hard',   enemyHpMult:1.4, enemySpeedMult:1.2, playerHp:8,  coopHp:5,  bossHpMult:1.5, spawnDelayMult:0.7 },
+};
+
 // ── Play Area ────────────────────────────────────────
 const HUD_H=64, JOYPAD_H=140;
 const PLAY_TOP=HUD_H, PLAY_BOTTOM=HEIGHT-JOYPAD_H;
@@ -62,8 +70,8 @@ const PLAT_PRESETS={
   4:[
     {x:0,y:GROUND_Y-90,w:140},{x:250,y:GROUND_Y-90,w:140},
     {x:100,y:GROUND_Y-145,w:120,moving:true,moveRange:100,moveSpeed:50},
-    {x:0,y:GROUND_Y-200,w:130,disappear:true,onTime:3000,offTime:1500},
-    {x:260,y:GROUND_Y-200,w:130,disappear:true,onTime:3000,offTime:1500,phase:1500},
+    {x:0,y:GROUND_Y-200,w:130,disappear:true,onTime:5000,offTime:1500},
+    {x:260,y:GROUND_Y-200,w:130,disappear:true,onTime:5000,offTime:1500,phase:2500},
     {x:100,y:GROUND_Y-280,w:130,moving:true,moveRange:90,moveSpeed:40},
   ],
 };
@@ -172,4 +180,4 @@ const JBTN={
 
 // ── Co-op Server ─────────────────────────────────────
 // เปลี่ยน URL นี้หลัง deploy server บน Render.com
-const COOP_SERVER_URL = 'https://tiny-guardian-server-1.onrender.com';
+const COOP_SERVER_URL = 'wss://tiny-guardian-server.onrender.com';

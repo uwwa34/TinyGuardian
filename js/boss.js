@@ -135,40 +135,60 @@ class BossUnit {
   }
 
   _nextAction(player, game, world) {
-    const actions = this.isFinal ? this._bossActions(player) : this._miniBossActions(player);
+    const dist = Math.abs((player.x+player.w/2) - (this.x+this.w/2));
+    const actions = this.isFinal ? this._bossActions(player,dist) : this._miniBossActions(player,dist);
     const action = actions[Math.floor(Math.random() * actions.length)];
 
-    // Face player
     this.facing = player.x + player.w/2 > this.x + this.w/2 ? 1 : -1;
 
     if (action === 'move') {
       this.state = 'move';
-      this.stateTimer = 1200 + Math.random() * 1000;
+      this.stateTimer = 1000 + Math.random() * 800;
     } else if (action === 'jump') {
       this.state = 'jump';
       this.vy = -600 - (this.isAngry ? 80 : 0);
       this.grounded = false;
       this.stateTimer = 800;
+    } else if (action === 'dodge') {
+      // Jump AWAY from player
+      this.state = 'jump';
+      this.facing = player.x + player.w/2 > this.x + this.w/2 ? -1 : 1; // face away
+      this.vy = -550;
+      this.grounded = false;
+      this.stateTimer = 700;
     } else if (action === 'attack') {
       this.state = 'attack';
       this.shakeTimer = 300;
       this._doAttack(player, game);
-      this.stateTimer = this.isAngry ? 1200 : 1800;
+      this.stateTimer = this.isAngry ? 1000 : 1500;
     } else {
       this.state = 'idle';
-      this.stateTimer = 600 + Math.random() * 500;
+      this.stateTimer = 300 + Math.random() * 300;
     }
   }
 
-  _miniBossActions(player) {
-    if (this.isAngry) return ['move','attack','jump','attack','move','idle'];
-    return ['move','attack','idle','jump','move','idle'];
+  _miniBossActions(player, dist) {
+    if (dist < 100) return ['dodge','attack','dodge','jump'];       // too close → dodge!
+    if (this.isAngry) return ['move','attack','jump','attack','move'];
+    return ['move','attack','jump','move','idle'];
   }
 
-  _bossActions(player) {
+  _bossActions(player, dist) {
+    if (dist < 120) return ['dodge','attack','dodge','jump'];       // too close → dodge!
     if (this.phase === 3) return ['move','attack','jump','attack','move','jump'];
-    if (this.phase === 2) return ['move','jump','attack','idle','move','attack'];
-    return ['idle','attack','move','idle','move','attack'];
+    if (this.phase === 2) return ['move','jump','attack','move','attack'];
+    return ['move','attack','move','jump','attack','idle'];
+  }
+
+  // Called when boss takes damage — interrupt and dodge
+  _onHitReaction() {
+    if (this.state === 'idle' && this.grounded) {
+      this.state = 'jump';
+      this.facing = -this.facing; // jump away
+      this.vy = -450;
+      this.grounded = false;
+      this.stateTimer = 600;
+    }
   }
 
   _doAttack(player, game) {
@@ -226,6 +246,7 @@ class BossUnit {
     this.hp -= dmg;
     this.flashTimer = 150;
     if (game) game.playSfx('boss_hit');
+    this._onHitReaction(); // dodge when hit
     if (this.hp <= 0) {
       this.dying = true;
       this.dieTimer = 1.0;
