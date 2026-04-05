@@ -70,6 +70,13 @@ class NetworkManager {
     this._send({ type: 'state', ...stateData });
   }
 
+  // ── Force send (bypass throttle — for critical state like TALLY) ──
+  forceSendState(stateData) {
+    if (!this.connected) return;
+    this._send({ type: 'state', ...stateData });
+    this.lastSentState = Date.now();
+  }
+
   // ── Send event (either direction) ──
   sendEvent(eventType, data) {
     if (!this.connected) return;

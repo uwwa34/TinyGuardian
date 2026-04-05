@@ -96,13 +96,14 @@ class EnemyUnit {
 class EnemyManager {
   constructor(){this.enemies=[];}
   reset(){this.enemies=[];}
-  spawnWave(waveData,world,player){
+  spawnWave(waveData,world,player,difficulty){
     const px=player?player.x+player.w/2:WIDTH/2;
     const py=player?player.y+player.h/2:GROUND_Y;
+    const spdMult=difficulty?difficulty.enemySpeedMult:1;
+    const hpMult=difficulty?difficulty.enemyHpMult:1;
     for(const entry of waveData){const def=ENEMY[entry.t];if(!def)continue;
       for(let i=0;i<entry.n;i++){
         const plats=world.platforms;if(!plats.length)continue;
-        // Filter platforms that are far enough from player
         const safePlats=plats.filter(p=>{
           const cx=p.x+p.w/2,cy=p.y;
           return Math.sqrt((cx-px)**2+(cy-py)**2)>120;
@@ -110,7 +111,10 @@ class EnemyManager {
         const pool=safePlats.length>0?safePlats:plats;
         const p=pool[Math.floor(Math.random()*pool.length)];
         const ex=p.x+Math.random()*Math.max(0,p.w-def.w);
-        this.enemies.push(new EnemyUnit(entry.t,ex,p.y-def.h));
+        const e=new EnemyUnit(entry.t,ex,p.y-def.h);
+        e.speed=Math.round(e.speed*spdMult);
+        e.hp=Math.max(1,Math.ceil(hpMult));
+        this.enemies.push(e);
     }}
   }
   spawnSingle(type,x,y,world){this.enemies.push(new EnemyUnit(type,x,y));}

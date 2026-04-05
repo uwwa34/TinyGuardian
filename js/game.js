@@ -497,15 +497,16 @@ class Game {
         } else if(newState===STATE.TALLY){
           // Guest tally — use Host's merged data
           if(s.p1){
-            this.player.score = s.p1.score;
-            if(s.p1.kills!==undefined) this.player.kills = s.p1.kills;
-            if(s.p1.items!==undefined) this.player.itemsCollected = s.p1.items;
+            this.player.score = s.p1.score || 0;
+            this.player.kills = s.p1.kills || 0;
+            this.player.itemsCollected = s.p1.items || 0;
           }
           this.stagesCleared = s.sc || this.stagesCleared || 0;
           this.tally.init(this.player, this.stagesCleared, this.timeBonuses||[]);
           this.state=STATE.TALLY;
           this._inputLock=800;
           this.coopMode=false;this.player2=null;this.player.coopActive=false;
+          this.net.disconnect();
         } else {
           this.state=newState;
         }
@@ -676,7 +677,7 @@ class Game {
       this.hud.addNotification('⚠️ ' + BOSS.name + ' มาแล้ว!');
       this.playSfx('boss_warning');
     } else {
-      this.enemyManager.spawnWave(waveData, this.world, this.player);
+      this.enemyManager.spawnWave(waveData, this.world, this.player, this.difficulty);
       this.hud.addNotification('Wave ' + this.currentWave + '!');
     }
   }
@@ -694,30 +695,31 @@ class Game {
   }
 
   _goTally() {
-    // In co-op Host: merge P2 stats into P1 + send to Guest
+    // Merge P2 stats
     if (this.coopMode && this.player2) {
       this.player.score += this.player2.score;
       this.player.kills += this.player2.kills || 0;
       this.player.itemsCollected += this.player2.itemsCollected || 0;
+    }
 
-      // Send final TALLY state to Guest
-      if (this.net && this.net.isHost && this.net.connected) {
-        this.net.sendGameState({
-          p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0,
-              kills:this.player.kills,items:this.player.itemsCollected},
-          p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:'idle',score:this.player2.score,grounded:true,invincible:false,animFrame:0,charging:false,chargeTime:0},
-          en:[],bo:null,pb:[],eb:[],it:[],
-          ti:0,gs:STATE.TALLY,st:this.currentStage,sc:this.stagesCleared,
-        });
-        this.net.lastSentState = 0;
-      }
+    // Force send TALLY to Guest (send 3 times for reliability over network)
+    if (this.coopMode && this.net && this.net.connected) {
+      const tallyPayload = {
+        p1:{score:this.player.score, kills:this.player.kills, items:this.player.itemsCollected},
+        p2:null, en:[], bo:null, pb:[], eb:[], it:[],
+        ti:0, gs:STATE.TALLY, st:this.currentStage, sc:this.stagesCleared,
+      };
+      this.net.forceSendState(tallyPayload);
+      // Send again after short delays for reliability
+      setTimeout(() => { if(this.net.connected) this.net.forceSendState(tallyPayload); }, 50);
+      setTimeout(() => { if(this.net.connected) this.net.forceSendState(tallyPayload); }, 150);
     }
 
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
 
-    // Cleanup co-op
+    // Cleanup AFTER sending
     if (this.coopMode) {
       this.coopMode = false;
       this.player2 = null;
@@ -1069,7 +1071,10 @@ class Game {
         return;
       }
     }
-    this._recomputeTouchInput(e.touches);
+    // Only process joypad during PLAYING state
+    if (this.state === STATE.PLAYING) {
+      this._recomputeTouchInput(e.touches);
+    }
   }
 
   _onTouchEnd(e) {
@@ -1164,28 +1169,40 @@ class Game {
   playSfx(key) {
     const snd = this.sounds[key];
     if (!snd) return;
-    // Send sfx to Guest
     if (this.coopMode && this.net && this.net.isHost && this.net.connected) {
       this.net.sendEvent('sfx', { name: key });
     }
     try {
-      // Ensure AudioContext exists and is resumed (iOS requires this)
       if (!this._audioCtx) this._audioCtx = window._audioCtx || new (window.AudioContext||window.webkitAudioContext)();
       if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
 
+      // Try cached Web Audio first
+      if (this._sfxCache[key]) {
+        this._playSfxBuf(this._sfxCache[key]);
+        return;
+      }
+      // Try decode from buffer
       if (snd._sfxBuf) {
-        if (this._sfxCache[key]) {
-          this._playSfxBuf(this._sfxCache[key]);
-        } else {
-          // Decode from a fresh copy of the buffer
-          const copy = snd._sfxBuf.slice(0);
-          this._audioCtx.decodeAudioData(copy, decoded => {
-            this._sfxCache[key] = decoded;
-            this._playSfxBuf(decoded);
-          }, ()=>{});
-        }
-      } else if (snd instanceof Audio) {
-        const clone = snd.cloneNode(); clone.volume=0.6; clone.play().catch(()=>{});
+        const copy = snd._sfxBuf.slice(0);
+        this._audioCtx.decodeAudioData(copy, decoded => {
+          this._sfxCache[key] = decoded;
+          this._playSfxBuf(decoded);
+        }, () => {
+          // Decode failed — use fallback Audio
+          this._playFallbackAudio(snd);
+        });
+        return;
+      }
+    } catch(e) {}
+    // Fallback: Audio element
+    this._playFallbackAudio(snd);
+  }
+
+  _playFallbackAudio(snd) {
+    try {
+      const audio = snd._fallbackAudio || (snd instanceof Audio ? snd : null);
+      if (audio) {
+        const clone = audio.cloneNode(); clone.volume = 0.6; clone.play().catch(()=>{});
       }
     } catch(e) {}
   }

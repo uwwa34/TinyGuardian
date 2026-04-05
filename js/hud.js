@@ -18,13 +18,17 @@ class HUD {
     ctx.fillStyle=hG;ctx.fillRect(0,0,WIDTH,HUD_H);
     ctx.fillStyle=COL.PRIMARY;ctx.fillRect(0,HUD_H-2,WIDTH,2);
 
-    const hr=7, hsp=18;
+    // Adaptive heart sizing
+    const perRow = player.maxHp > 8 ? 6 : 5;
+    const hr = player.maxHp > 8 ? 5 : 7;
+    const hsp = player.maxHp > 8 ? 14 : 18;
+    const hRowH = player.maxHp > 8 ? 13 : 16;
 
     // P1 hearts — left side
     for(let i=0;i<player.maxHp;i++){
-      const row=Math.floor(i/5),col=i%5;
+      const row=Math.floor(i/perRow),col=i%perRow;
       ctx.fillStyle=i<player.hp?COL.HEART_ON:'#FFE0B2';
-      this._heart(ctx,8+col*hsp,10+row*16,hr);ctx.fill();
+      this._heart(ctx,8+col*hsp,10+row*hRowH,hr);ctx.fill();
     }
 
     // Stage (center top)
@@ -33,15 +37,19 @@ class HUD {
 
     // P2 hearts — right side (blue, mirror)
     if(player2){
+      const p2perRow = player2.maxHp > 8 ? 6 : 5;
+      const p2hr = player2.maxHp > 8 ? 5 : 7;
+      const p2hsp = player2.maxHp > 8 ? 14 : 18;
       for(let i=0;i<player2.maxHp;i++){
-        const row=Math.floor(i/5),col=4-(i%5);
+        const row=Math.floor(i/p2perRow),col=(p2perRow-1)-(i%p2perRow);
         ctx.fillStyle=i<player2.hp?'#42A5F5':'#E3F2FD';
-        this._heart(ctx,WIDTH-8-col*hsp,10+row*16,hr);ctx.fill();
+        this._heart(ctx,WIDTH-8-col*p2hsp,10+row*hRowH,p2hr);ctx.fill();
       }
     }
 
-    // Row 2: scores + timer
-    const r2y=player.maxHp>5?42:30;
+    // Row 2: scores + timer (below hearts)
+    const heartRows = Math.ceil(player.maxHp/perRow);
+    const r2y = 10 + heartRows*hRowH + 6;
     ctx.font='11px '+FONT.MAIN;ctx.textAlign='left';ctx.fillStyle=COL.PRIMARY_D;
     ctx.fillText('★'+player.score,8,r2y);
     ctx.font='11px '+FONT.BODY;ctx.fillStyle=timeLeft<=15?COL.HEART_ON:COL.HUD_TEXT;ctx.textAlign='center';
