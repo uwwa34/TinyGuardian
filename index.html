@@ -184,11 +184,15 @@ function loadSnd(src, isBGM) {
       setTimeout(function(){ resolve(a); }, 100);
     });
   }
+  // Load BOTH ArrayBuffer (for Web Audio) AND Audio element (fallback)
   return fetch(src)
     .then(function(r){ return r.arrayBuffer(); })
-    .then(function(buf){ return { _sfxBuf: buf, _src: src }; })
+    .then(function(buf){
+      var fallback = new Audio(); fallback.src = src; fallback.preload = 'auto';
+      return { _sfxBuf: buf, _src: src, _fallbackAudio: fallback };
+    })
     .catch(function(){
-      var a = new Audio(); a.src = src; return a;
+      var a = new Audio(); a.src = src; a.preload = 'auto'; return a;
     });
 }
 
