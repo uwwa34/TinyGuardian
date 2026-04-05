@@ -115,6 +115,12 @@
   ['touchstart','touchend','pointerdown','mousedown','click','keydown'].forEach(function(ev){
     document.addEventListener(ev, unlock, {passive:true});
   });
+  // Resume audio when returning from background (iOS)
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden && window._game) {
+      window._game._unlockAudio();
+    }
+  });
 })();
 </script>
 
