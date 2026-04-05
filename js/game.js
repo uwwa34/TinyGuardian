@@ -1173,28 +1173,28 @@ class Game {
       this.net.sendEvent('sfx', { name: key });
     }
     try {
-      if (!this._audioCtx) this._audioCtx = window._audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-      if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
+      // Ensure AudioContext exists
+      if (!this._audioCtx || this._audioCtx.state === 'closed') {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        this._audioCtx = new AC();
+        this._sfxCache = {}; // clear cache — need re-decode
+      }
+      // Resume if suspended/interrupted (iOS)
+      if (this._audioCtx.state !== 'running') this._audioCtx.resume();
 
-      // Try cached Web Audio first
       if (this._sfxCache[key]) {
         this._playSfxBuf(this._sfxCache[key]);
         return;
       }
-      // Try decode from buffer
       if (snd._sfxBuf) {
         const copy = snd._sfxBuf.slice(0);
         this._audioCtx.decodeAudioData(copy, decoded => {
           this._sfxCache[key] = decoded;
           this._playSfxBuf(decoded);
-        }, () => {
-          // Decode failed — use fallback Audio
-          this._playFallbackAudio(snd);
-        });
+        }, () => { this._playFallbackAudio(snd); });
         return;
       }
     } catch(e) {}
-    // Fallback: Audio element
     this._playFallbackAudio(snd);
   }
 
@@ -1210,19 +1210,21 @@ class Game {
   _playSfxBuf(decoded) {
     try {
       const ctx = this._audioCtx;
-      if (!ctx) return;
-      if (ctx.state === 'suspended') ctx.resume();
+      if (!ctx || ctx.state === 'closed') return;
+      if (ctx.state !== 'running') ctx.resume();
       const src = ctx.createBufferSource(); src.buffer = decoded;
       const gain = ctx.createGain(); gain.gain.value = 0.6;
       src.connect(gain).connect(ctx.destination); src.start(0);
     } catch(e) {}
   }
 
-  // Called by iOS unlock handler — pre-decode ALL sounds
   _unlockAudio() {
     if (!this._audioCtx) this._audioCtx = window._audioCtx;
-    if (this._audioCtx && this._audioCtx.state === 'suspended') this._audioCtx.resume();
-    // Pre-decode all SFX buffers
+    if (!this._audioCtx) {
+      try { this._audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){}
+    }
+    if (this._audioCtx && this._audioCtx.state !== 'running') this._audioCtx.resume();
+    // Pre-decode all SFX
     if (this._audioCtx && this.sounds) {
       for (const key of Object.keys(this.sounds)) {
         const snd = this.sounds[key];
