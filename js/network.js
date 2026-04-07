@@ -312,7 +312,7 @@ class CoopLobbyUI {
   }
 
   _drawCodeKB(ctx, startY) {
-    const rows = [['A','B','C','D','E','F','G','H'],['J','K','L','M','N','P','Q','R'],['S','T','U','V','W','X','Y','Z'],['2','3','4','5','6','7','8','9']];
+    const rows = [['A','B','C','D','E','F','G','H'],['J','K','L','M','N','P','Q','R'],['S','T','U','V','W','X','Y','Z'],['2','3','4','5','6','7','8','9','⌫']];
     const keyH = 36, keyGap = 3;
     this._kbData = { rows, startY, keyH, keyGap };
     rows.forEach((row, ri) => {
@@ -320,22 +320,15 @@ class CoopLobbyUI {
       const rowX = (WIDTH-(keyW+keyGap)*row.length)/2;
       row.forEach((k, ki) => {
         const kx = rowX+ki*(keyW+keyGap), ky = startY+ri*(keyH+keyGap);
-        ctx.fillStyle = 'rgba(255,236,179,0.7)'; ctx.strokeStyle = COL.PRIMARY; ctx.lineWidth = 1;
+        const isDel = k === '⌫';
+        ctx.fillStyle = isDel ? '#FFCDD2' : 'rgba(255,236,179,0.7)';
+        ctx.strokeStyle = isDel ? '#EF5350' : COL.PRIMARY; ctx.lineWidth = 1;
         _rr(ctx,kx,ky,keyW,keyH,5); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = COL.HUD_TEXT; ctx.font = '13px '+FONT.MAIN;
+        ctx.fillStyle = isDel ? '#C62828' : COL.HUD_TEXT; ctx.font = '13px '+FONT.MAIN;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(k, kx+keyW/2, ky+keyH/2);
       });
     });
-    // Delete button
-    const delY = startY + rows.length*(keyH+keyGap);
-    const delW = 80, delX = WIDTH/2 - delW/2;
-    ctx.fillStyle = '#FFCDD2'; ctx.strokeStyle = '#EF5350'; ctx.lineWidth = 1.5;
-    _rr(ctx,delX,delY,delW,keyH,5); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#C62828'; ctx.font = '13px '+FONT.MAIN;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('⌫ ลบ', delX+delW/2, delY+keyH/2);
-    this._kbData.delBtn = { x:delX, y:delY, w:delW, h:keyH };
   }
 
   handleTouch(tx, ty, net) {
@@ -363,17 +356,10 @@ class CoopLobbyUI {
           for (let ki=0; ki<row.length; ki++) {
             const kx = rowX+ki*(keyW+keyGap), ky = startY+ri*(keyH+keyGap);
             if (tx>=kx && tx<=kx+keyW && ty>=ky && ty<=ky+keyH) {
-              if (this.inputCode.length < 4) this.inputCode += row[ki];
+              if (row[ki] === '⌫') { this.inputCode = this.inputCode.slice(0,-1); }
+              else if (this.inputCode.length < 4) this.inputCode += row[ki];
               return null;
             }
-          }
-        }
-        // Delete button
-        if (this._kbData.delBtn) {
-          const d = this._kbData.delBtn;
-          if (tx>=d.x && tx<=d.x+d.w && ty>=d.y && ty<=d.y+d.h) {
-            this.inputCode = this.inputCode.slice(0,-1);
-            return null;
           }
         }
       }

@@ -153,6 +153,9 @@ class Game {
   _handlePeerEvent(data) {
     if (!data || !data.event) return;
     if (data.event === 'sfx') this.playSfx(data.name);
+    if (data.event === 'set_difficulty' && data.diff && DIFFICULTY[data.diff]) {
+      this.difficulty = DIFFICULTY[data.diff];
+    }
   }
 
   start() {
@@ -702,7 +705,7 @@ class Game {
       this.player.itemsCollected += this.player2.itemsCollected || 0;
     }
 
-    // Force send TALLY to Guest (send 3 times for reliability over network)
+    // Force send TALLY to Guest
     if (this.coopMode && this.net && this.net.connected) {
       const tallyPayload = {
         p1:{score:this.player.score, kills:this.player.kills, items:this.player.itemsCollected},
@@ -710,21 +713,15 @@ class Game {
         ti:0, gs:STATE.TALLY, st:this.currentStage, sc:this.stagesCleared,
       };
       this.net.forceSendState(tallyPayload);
-      // Send again after short delays for reliability
-      setTimeout(() => { if(this.net.connected) this.net.forceSendState(tallyPayload); }, 50);
-      setTimeout(() => { if(this.net.connected) this.net.forceSendState(tallyPayload); }, 150);
+      setTimeout(() => { try{if(this.net&&this.net.connected)this.net.forceSendState(tallyPayload);}catch(e){} }, 100);
+      setTimeout(() => { try{if(this.net&&this.net.connected)this.net.forceSendState(tallyPayload);}catch(e){} }, 300);
     }
 
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
-
-    // Cleanup AFTER sending
-    if (this.coopMode) {
-      this.coopMode = false;
-      this.player2 = null;
-      this.player.coopActive = false;
-    }
+    // DON'T cleanup coopMode here — _restartGame will do it
+    // This keeps _updateCoop running so Guest can still receive TALLY
   }
 
   spawnProjectile(x, y, dir, charged, angleY) {
@@ -1034,6 +1031,8 @@ class Game {
       this.coopLobby.state = 'connecting';
       this.net.joinRoom(this.coopLobby.inputCode, COOP_SERVER_URL);
     } else if (action === 'start') {
+      // Send difficulty to Guest before starting
+      this.net.sendEvent('set_difficulty', { diff: Object.keys(DIFFICULTY).find(k => DIFFICULTY[k] === this.difficulty) || 'MEDIUM' });
       this.net.startGame();
     } else if (action === 'back') {
       this.net.disconnect();
