@@ -46,8 +46,8 @@ class NetworkManager {
   }
 
   // ── Host starts game ──
-  startGame() {
-    if (this.isHost) this._send({ type: 'start' });
+  startGame(diffKey) {
+    if (this.isHost) this._send({ type: 'start', diff: diffKey || 'MEDIUM' });
   }
 
   // ── Send input (guest → host) ──
@@ -163,7 +163,7 @@ class NetworkManager {
         break;
       case 'start':
         this.state = NET_STATE.PLAYING;
-        this._emit('game_start');
+        this._emit('game_start', msg.diff || 'MEDIUM');
         break;
       case 'input':
         // Host receives guest input
