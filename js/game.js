@@ -48,15 +48,10 @@ class Game {
     this.introTimer = 0;
 
     this._audioCtx = window._audioCtx || null;
-    this._sfxCache = {};
     this._lastTime = 0;
     this._raf = null;
 
-    // BGM
-    this._bgmNode = null;       // AudioBufferSourceNode (Web Audio loop)
-    this._bgmGain = null;       // GainNode สำหรับ fade
-    this._bgmBuffer = null;     // decoded AudioBuffer (cache ไว้ decode ครั้งเดียว)
-    this._bgmPlaying = false;
+    // BGM fade timer
     this._bgmFadeTimer = null;
 
     this._bindInput();
@@ -172,6 +167,7 @@ class Game {
     this.player.reset();
     this.introTimer = 0;
     this._lastTime = performance.now();
+    this._bindVisibility();
     this._loop(this._lastTime);
     window._game = this;
   }
@@ -197,12 +193,12 @@ class Game {
     if (this._inputLock > 0) this._inputLock -= dt * 1000;
 
     switch (this.state) {
-      case STATE.INTRO:    this.introTimer += dt; this._bgmStop(); break;
-      case 'COOP_LOBBY':   this.coopLobby.update(dt); this._bgmStop(); break;
+      case STATE.INTRO:    this.introTimer += dt; this._stopBGM('bgm'); break;
+      case 'COOP_LOBBY':   this.coopLobby.update(dt); this._stopBGM('bgm'); break;
       case STATE.PLAYING:
         this._updatePlaying(dt);
         if (this.coopMode && this.player2) this._updateCoop(dt);
-        this._bgmPlay();
+        this._playBGM('bgm');
         break;
       case STATE.STAGE_CLEAR:
         if (!(this.coopMode && this.net && this.net.isGuest)) {
@@ -213,7 +209,7 @@ class Game {
           }
         }
         if (this.coopMode && this.player2) this._updateCoop(dt);
-        this._bgmPlay();
+        this._playBGM('bgm');
         break;
       case STATE.GAME_OVER:
         if (!(this.coopMode && this.net && this.net.isGuest)) {
@@ -223,7 +219,7 @@ class Game {
         if (this.coopMode && this.player2) this._updateCoop(dt);
         this._bgmFadeOut(2.0);
         break;
-      case STATE.TALLY:  this.tally.update(dt); this._bgmStop(); break;
+      case STATE.TALLY:  this.tally.update(dt); this._stopBGM('bgm'); break;
       case STATE.NAME:   this.nameScreen.update(dt); break;
       case STATE.RANKING: this.rankingScreen.update(); break;
     }
@@ -1175,186 +1171,172 @@ class Game {
   //  AUDIO
   // ══════════════════════════════════════════════════
   playSfx(key) {
-    const snd = this.sounds[key];
-    if (!snd) return;
+    // Co-op: Host relay SFX ไปยัง Guest ด้วย
     if (this.coopMode && this.net && this.net.isHost && this.net.connected) {
       this.net.sendEvent('sfx', { name: key });
     }
+    this._sfx(key);
+  }
+
+  _sfx(key) {
+    const s = this.sounds[key];
+    if (!s) return;
+
+    // Web Audio path — ใช้ decoded AudioBuffer (decode ครั้งเดียวแล้วเก็บ cache)
+    if (s._sfxBuf || s._audioBuf) {
+      const ctx = window._audioCtx;
+      if (!ctx) return;
+      if (ctx.state === 'suspended') { ctx.resume(); return; }
+
+      const play = (buf) => {
+        try {
+          const src  = ctx.createBufferSource();
+          const gain = ctx.createGain();
+          gain.gain.value = SFX_VOLUME;
+          src.buffer = buf;
+          src.connect(gain);
+          gain.connect(ctx.destination);
+          src.start(0);
+        } catch(e) {}
+      };
+
+      if (s._audioBuf) {
+        play(s._audioBuf);
+      } else {
+        // decode ครั้งแรก เก็บ cache ใน s._audioBuf ลบ _sfxBuf ทิ้ง
+        ctx.decodeAudioData(s._sfxBuf, (decoded) => {
+          s._audioBuf = decoded;
+          delete s._sfxBuf;
+          play(decoded);
+        }, () => {});
+      }
+      return;
+    }
+
+    // Audio element fallback
+    if (window._audioCtx && window._audioCtx.state === 'suspended') {
+      window._audioCtx.resume();
+    }
     try {
-      // Ensure AudioContext exists
-      if (!this._audioCtx || this._audioCtx.state === 'closed') {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        this._audioCtx = new AC();
-        this._sfxCache = {}; // clear cache — need re-decode
-      }
-      // Resume if suspended/interrupted (iOS)
-      if (this._audioCtx.state !== 'running') this._audioCtx.resume();
-
-      if (this._sfxCache[key]) {
-        this._playSfxBuf(this._sfxCache[key]);
-        return;
-      }
-      if (snd._sfxBuf) {
-        const copy = snd._sfxBuf.slice(0);
-        this._audioCtx.decodeAudioData(copy, decoded => {
-          this._sfxCache[key] = decoded;
-          this._playSfxBuf(decoded);
-        }, () => { this._playFallbackAudio(snd); });
-        return;
-      }
-    } catch(e) {}
-    this._playFallbackAudio(snd);
-  }
-
-  _playFallbackAudio(snd) {
-    try {
-      const audio = snd._fallbackAudio || (snd instanceof Audio ? snd : null);
-      if (audio) {
-        const clone = audio.cloneNode(); clone.volume = 0.6; clone.play().catch(()=>{});
-      }
+      const clone = typeof s.cloneNode === 'function' ? s.cloneNode(true) : s;
+      clone.volume = SFX_VOLUME;
+      clone.muted  = false;
+      const p = clone.play();
+      if (p instanceof Promise) p.catch(() => {});
     } catch(e) {}
   }
 
-  _playSfxBuf(decoded) {
-    try {
-      const ctx = this._audioCtx;
-      if (!ctx || ctx.state === 'closed') return;
-      if (ctx.state !== 'running') ctx.resume();
-      const src = ctx.createBufferSource(); src.buffer = decoded;
-      const gain = ctx.createGain(); gain.gain.value = 0.6;
-      src.connect(gain).connect(ctx.destination); src.start(0);
-    } catch(e) {}
-  }
-
-  _unlockAudio() {
-    if (!this._audioCtx) this._audioCtx = window._audioCtx;
-    if (!this._audioCtx) {
-      try { this._audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){}
+  // ── BGM ───────────────────────────────────────────────
+  _playBGM(key) {
+    const bgm = this.sounds[key];
+    if (!bgm) return;
+    // เล่นอยู่แล้ว → ไม่ทำซ้ำ
+    if (!bgm.paused) return;
+    bgm.loop   = true;
+    bgm.volume = BGM_VOLUME;
+    bgm.muted  = false;
+    window._bgmEl = bgm;
+    if (window._audioCtx && window._audioCtx.state === 'suspended') {
+      window._audioCtx.resume().then(() => bgm.play().catch(() => {}));
+      return;
     }
-    if (this._audioCtx && this._audioCtx.state !== 'running') this._audioCtx.resume();
-    // Pre-decode all SFX
-    if (this._audioCtx && this.sounds) {
-      for (const key of Object.keys(this.sounds)) {
-        const snd = this.sounds[key];
-        if (snd && snd._sfxBuf && !this._sfxCache[key]) {
-          try {
-            const copy = snd._sfxBuf.slice(0);
-            this._audioCtx.decodeAudioData(copy, decoded => {
-              this._sfxCache[key] = decoded;
-            }, ()=>{});
-          } catch(e) {}
-        }
-      }
-    }
-    // ถ้า BGM ควรเล่นอยู่ แต่หลุดเพราะ iOS suspend → resume
-    if (this._bgmPlaying) this._bgmPlay();
-  }
-
-  // ── BGM Engine ────────────────────────────────────────
-  _bgmEnsureCtx() {
-    if (!this._audioCtx || this._audioCtx.state === 'closed') {
-      try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        this._audioCtx = new AC();
-        this._bgmBuffer = null; // context ใหม่ ต้อง decode ใหม่
-        this._sfxCache = {};
-      } catch(e) { return false; }
-    }
-    if (this._audioCtx.state !== 'running') {
-      try { this._audioCtx.resume(); } catch(e) {}
-    }
-    return true;
-  }
-
-  _bgmPlay() {
-    // ไม่มีไฟล์ BGM → ข้าม
-    const snd = this.sounds && this.sounds.bgm;
-    if (!snd) return;
-    // กำลังเล่นอยู่แล้ว → ไม่ทำซ้ำ
-    if (this._bgmPlaying && this._bgmNode) return;
-    // ยกเลิก fade timer ถ้ามี
-    if (this._bgmFadeTimer) { clearTimeout(this._bgmFadeTimer); this._bgmFadeTimer = null; }
-    if (!this._bgmEnsureCtx()) return;
-    const ctx = this._audioCtx;
-
-    const startLoop = (buffer) => {
-      // stop node เก่าถ้ายังค้างอยู่
-      this._bgmStopNode();
-      try {
-        this._bgmGain = ctx.createGain();
-        this._bgmGain.gain.value = 0.35;
-        this._bgmGain.connect(ctx.destination);
-        this._bgmNode = ctx.createBufferSource();
-        this._bgmNode.buffer = buffer;
-        this._bgmNode.loop = true;
-        this._bgmNode.connect(this._bgmGain);
-        this._bgmNode.start(0);
-        this._bgmPlaying = true;
-      } catch(e) { this._bgmPlaying = false; }
-    };
-
-    // ถ้า decode แล้ว → เล่นเลย
-    if (this._bgmBuffer) { startLoop(this._bgmBuffer); return; }
-
-    // BGM โหลดเป็น Audio element (isBGM path ใน index.html)
-    // ต้อง fetch + decode ผ่าน Web Audio เพื่อ loop ได้ถูกต้องบน iOS
-    const src = snd.src || (ASSET_SOUNDS && ASSET_SOUNDS.bgm);
-    if (!src) return;
-    fetch(src)
-      .then(r => r.arrayBuffer())
-      .then(buf => ctx.decodeAudioData(buf,
-        (decoded) => { this._bgmBuffer = decoded; startLoop(decoded); },
-        () => {
-          // Web Audio decode ล้มเหลว → fallback ใช้ Audio element loop
-          try {
-            snd.loop = true; snd.volume = 0.35;
-            snd.play().catch(()=>{});
-            this._bgmPlaying = true;
-          } catch(e) {}
-        }
-      ))
-      .catch(() => {
-        // fetch ล้มเหลว (เช่น file ไม่มี) → เงียบ
-        this._bgmPlaying = false;
+    const p = bgm.play();
+    if (p instanceof Promise) {
+      p.catch(() => {
+        // retry หลัง 200ms — iOS อาจต้องการเวลาหลัง unlock
+        setTimeout(() => bgm.play().catch(() => {}), 200);
       });
+    }
   }
 
-  _bgmStop() {
-    if (!this._bgmPlaying) return;
-    if (this._bgmFadeTimer) { clearTimeout(this._bgmFadeTimer); this._bgmFadeTimer = null; }
-    this._bgmStopNode();
-    // fallback Audio element
-    const snd = this.sounds && this.sounds.bgm;
-    if (snd && snd.pause) { try { snd.pause(); snd.currentTime = 0; } catch(e){} }
-    this._bgmPlaying = false;
+  _stopBGM(key) {
+    const bgm = this.sounds[key];
+    if (bgm) { try { bgm.pause(); bgm.currentTime = 0; } catch(e) {} }
+    if (key === 'bgm') window._bgmEl = null;
   }
 
   _bgmFadeOut(durationSec) {
-    // เรียกซ้ำได้ ถ้า fade กำลังทำงานอยู่แล้ว → ไม่ทำซ้ำ
-    if (!this._bgmPlaying) return;
-    if (this._bgmFadeTimer) return;
-    if (this._bgmGain && this._audioCtx) {
-      try {
-        const ctx = this._audioCtx;
-        this._bgmGain.gain.cancelScheduledValues(ctx.currentTime);
-        this._bgmGain.gain.setValueAtTime(this._bgmGain.gain.value, ctx.currentTime);
-        this._bgmGain.gain.linearRampToValueAtTime(0, ctx.currentTime + durationSec);
-      } catch(e) {}
-    }
-    this._bgmFadeTimer = setTimeout(() => {
-      this._bgmFadeTimer = null;
-      this._bgmStop();
-    }, durationSec * 1000);
+    // fade ผ่าน volume ของ Audio element
+    const bgm = this.sounds['bgm'];
+    if (!bgm || bgm.paused) return;
+    if (this._bgmFadeTimer) { clearTimeout(this._bgmFadeTimer); this._bgmFadeTimer = null; }
+    const steps   = 20;
+    const stepMs  = (durationSec * 1000) / steps;
+    const volStep = bgm.volume / steps;
+    let   count   = 0;
+    const tick = () => {
+      count++;
+      bgm.volume = Math.max(0, bgm.volume - volStep);
+      if (count < steps) {
+        this._bgmFadeTimer = setTimeout(tick, stepMs);
+      } else {
+        this._bgmFadeTimer = null;
+        this._stopBGM('bgm');
+      }
+    };
+    this._bgmFadeTimer = setTimeout(tick, stepMs);
   }
 
-  _bgmStopNode() {
-    if (this._bgmNode) {
-      try { this._bgmNode.stop(); this._bgmNode.disconnect(); } catch(e) {}
-      this._bgmNode = null;
+  _bindVisibility() {
+    document.addEventListener('visibilitychange', () => {
+      const bgm = window._bgmEl;
+      if (!bgm) return;
+      if (document.hidden) {
+        bgm.pause();
+      } else if (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR) {
+        bgm.play().catch(() => {});
+      }
+    });
+  }
+
+  // ── iOS Audio Unlock ──────────────────────────────────
+  _unlockAudio() {
+    if (window._audioUnlocked) return;
+    window._audioUnlocked = true;
+
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        window._audioCtx = ctx;
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(0);
+        ctx.resume().then(() => {
+          this._predecodeSFX(ctx);
+        });
+      }
+    } catch(e) {}
+
+    // unlock HTMLAudio elements ทั้งหมด (BGM + fallback)
+    // iOS ต้องการ play() ใน gesture context ก่อนถึงจะ play ได้ทีหลัง
+    Object.values(this.sounds).forEach(s => {
+      if (!s || typeof s.play !== 'function') return;
+      try {
+        s.muted = true;
+        const p = s.play();
+        if (p && p.then) {
+          p.then(() => { s.pause(); s.currentTime = 0; s.muted = false; })
+           .catch(() => { s.muted = false; });
+        }
+      } catch(e) { try { s.muted = false; } catch(e2) {} }
+    });
+
+    // ถ้า BGM ควรเล่นอยู่ → resume
+    if (window._bgmEl && (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR)) {
+      window._bgmEl.play().catch(() => {});
     }
-    if (this._bgmGain) {
-      try { this._bgmGain.disconnect(); } catch(e) {}
-      this._bgmGain = null;
-    }
+  }
+
+  _predecodeSFX(ctx) {
+    Object.entries(this.sounds).forEach(([key, s]) => {
+      if (!s || !s._sfxBuf) return;
+      ctx.decodeAudioData(s._sfxBuf, (decoded) => {
+        s._audioBuf = decoded;
+        delete s._sfxBuf;
+      }, () => {});
+    });
   }
 }

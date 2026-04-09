@@ -178,6 +178,10 @@ const JBTN={
   A:    {x:WIDTH-JOYPAD_PAD-BTN_W,                   y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'A', hint:'Jump'},
 };
 
+// ── Audio Volume ─────────────────────────────────────
+const BGM_VOLUME = 0.35;
+const SFX_VOLUME = 0.6;
+
 // ── Co-op Server ─────────────────────────────────────
 // เปลี่ยน URL นี้หลัง deploy server บน Render.com
 const COOP_SERVER_URL = 'https://tiny-guardian-server-1.onrender.com';
