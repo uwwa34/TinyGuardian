@@ -194,8 +194,7 @@ function loadSnd(src, isBGM) {
   return fetch(src)
     .then(function(r){ return r.arrayBuffer(); })
     .then(function(buf){
-      var fallback = new Audio(); fallback.src = src; fallback.preload = 'auto';
-      return { _sfxBuf: buf, _src: src, _fallbackAudio: fallback };
+      return { _sfxBuf: buf, _src: src };
     })
     .catch(function(){
       var a = new Audio(); a.src = src; a.preload = 'auto'; return a;
