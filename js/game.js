@@ -356,8 +356,8 @@ class Game {
 
       // Send FULL state (including bullets + items)
       this.net.sendGameState({
-        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0},
-        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
+        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,mhp:this.player.maxHp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0},
+        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,mhp:this.player2.maxHp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
         en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
         bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer,fin:this.boss.isFinal,ph:this.boss.phase}:null,
         pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,d:b.dir,c:b.charged})),
@@ -414,8 +414,8 @@ class Game {
       if (!s) return;
 
       // ── Players ──
-      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime||0;}
-      if(s.p2&&this.player2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime||0;}
+      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;if(s.p1.mhp)p.maxHp=s.p1.mhp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime||0;}
+      if(s.p2&&this.player2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;if(s.p2.mhp)p.maxHp=s.p2.mhp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime||0;}
 
       // ── Enemies ──
       if(s.en){
@@ -703,14 +703,14 @@ class Game {
   }
 
   _goTally() {
-    // Merge P2 stats
+    // Merge P2 stats ก่อน cleanup
     if (this.coopMode && this.player2) {
       this.player.score += this.player2.score;
       this.player.kills += this.player2.kills || 0;
       this.player.itemsCollected += this.player2.itemsCollected || 0;
     }
 
-    // Force send TALLY to Guest
+    // Force send TALLY to Guest (ก่อน cleanup เพราะต้องการ net ยังเชื่อมต่ออยู่)
     if (this.coopMode && this.net && this.net.connected) {
       const tallyPayload = {
         p1:{score:this.player.score, kills:this.player.kills, items:this.player.itemsCollected},
@@ -722,11 +722,14 @@ class Game {
       setTimeout(() => { try{if(this.net&&this.net.connected)this.net.forceSendState(tallyPayload);}catch(e){} }, 300);
     }
 
+    // Cleanup coop ก่อน switch state — ป้องกัน _draw() เรียก _drawPlaying() แล้ว HUD ค้าง
+    this.coopMode = false;
+    this.player2 = null;
+    this.player.coopActive = false;
+
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
-    // DON'T cleanup coopMode here — _restartGame will do it
-    // This keeps _updateCoop running so Guest can still receive TALLY
   }
 
   spawnProjectile(x, y, dir, charged, angleY) {
@@ -1186,7 +1189,6 @@ class Game {
     if (s._sfxBuf || s._audioBuf) {
       const ctx = window._audioCtx;
       if (!ctx) return;
-      if (ctx.state === 'suspended') { ctx.resume(); return; }
 
       const play = (buf) => {
         try {
@@ -1200,10 +1202,17 @@ class Game {
         } catch(e) {}
       };
 
+      // iOS: suspended → resume แล้ว retry (ไม่ทิ้งเสียง)
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          if (s._audioBuf) play(s._audioBuf);
+        }).catch(() => {});
+        return;
+      }
+
       if (s._audioBuf) {
         play(s._audioBuf);
       } else {
-        // decode ครั้งแรก เก็บ cache ใน s._audioBuf ลบ _sfxBuf ทิ้ง
         ctx.decodeAudioData(s._sfxBuf, (decoded) => {
           s._audioBuf = decoded;
           delete s._sfxBuf;
