@@ -2,7 +2,7 @@
 //  js/hud.js — Tiny Guardian (co-op ready)
 // ═══════════════════════════════════════════════════
 class HUD {
-  constructor(){this.comboPopups=[];this.notifications=[];}
+  constructor(){this.comboPopups=[];this.notifications=[];this.sessionMs=0;}
   addComboPopup(t,x,y,c){this.comboPopups.push({text:t,x,y,timer:1.0,color:c||COL.GOLD});}
   addNotification(t){this.notifications.push({text:t,timer:2.0});}
   update(dt){
@@ -64,6 +64,35 @@ class HUD {
     // Charge bars above players
     this._chargeBar(ctx,player);
     if(player2&&player2.hp>0)this._chargeBar(ctx,player2);
+
+    // Screen Time — progress bar บาง 3px ที่ขอบล่าง HUD
+    const sMs = this.sessionMs || 0;
+    if (sMs > 0 && typeof SCREEN_TIME_LIMIT_MS !== 'undefined') {
+      const pct = Math.min(sMs / SCREEN_TIME_LIMIT_MS, 1);
+      // สี: เขียว (0%) → เหลือง (60%) → แดง (90%)
+      let barColor;
+      if (pct < 0.6)      barColor = COL.MINT;
+      else if (pct < 0.9) barColor = COL.PRIMARY_D;
+      else                barColor = COL.HEART_ON;
+      ctx.fillStyle = barColor;
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(0, HUD_H-3, WIDTH * pct, 3);
+      ctx.globalAlpha = 1;
+
+      // Warning icon เมื่อเหลือน้อยกว่า 3 นาที — แสดงระหว่าง STAGE กับ timer
+      const msLeft = SCREEN_TIME_LIMIT_MS - sMs;
+      if (msLeft < 3 * 60 * 1000) {
+        const blink = Math.floor(Date.now()/500)%2 === 0;
+        ctx.globalAlpha = blink ? 1 : 0.4;
+        ctx.font = '9px '+FONT.BODY;
+        ctx.fillStyle = COL.HEART_ON;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const minLeft = Math.ceil(msLeft / 60000);
+        ctx.fillText('🕐 พักได้ในอีก '+minLeft+' นาที', WIDTH/2, 31);
+        ctx.globalAlpha = 1;
+      }
+    }
 
     // Popups
     for(const p of this.comboPopups){ctx.save();ctx.globalAlpha=Math.min(1,p.timer*2);ctx.font='18px '+FONT.MAIN;ctx.fillStyle=p.color;ctx.textAlign='center';ctx.strokeStyle='#FFF';ctx.lineWidth=3;ctx.strokeText(p.text,p.x,p.y);ctx.fillText(p.text,p.x,p.y);ctx.restore();}

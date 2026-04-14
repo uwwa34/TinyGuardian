@@ -903,6 +903,7 @@ class Game {
     this.projManager.draw(ctx);
     this.player.draw(ctx, this.images);
     if (this.player2) this.player2.draw(ctx, this.images);
+    this.hud.sessionMs = this._sessionMs;
     this.hud.draw(ctx, this.player, this.currentStage, this.stageTimer, this.coopMode ? this.player2 : null);
     this._drawJoypad(ctx);
   }
