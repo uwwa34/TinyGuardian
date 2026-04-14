@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════
 const WIDTH=390, HEIGHT=720;
 
-const STATE={LOADING:'LOADING',INTRO:'INTRO',PLAYING:'PLAYING',STAGE_CLEAR:'STAGE_CLEAR',GAME_OVER:'GAME_OVER',TALLY:'TALLY',NAME:'NAME',RANKING:'RANKING'};
+const STATE={LOADING:'LOADING',INTRO:'INTRO',PLAYING:'PLAYING',STAGE_CLEAR:'STAGE_CLEAR',GAME_OVER:'GAME_OVER',TALLY:'TALLY',NAME:'NAME',RANKING:'RANKING',BREAK:'BREAK'};
 
 // ── Yellow Pastel Palette ────────────────────────────
 const COL={
@@ -36,9 +36,9 @@ const PLAYER_W=52, PLAYER_H=60, PLAYER_SPEED=180, PLAYER_HP=10, INVINCIBLE_MS=15
 // ── Difficulty Settings ──────────────────────────────
 // Current = MEDIUM. Apply multipliers in game.js based on selection.
 const DIFFICULTY = {
-  EASY:   { label:'ง่าย',   labelEn:'Easy',   enemyHpMult:0.7, enemySpeedMult:0.8, playerHp:12, coopHp:10, bossHpMult:0.6, spawnDelayMult:1.4 },
-  MEDIUM: { label:'ปกติ',   labelEn:'Medium', enemyHpMult:1.0, enemySpeedMult:1.0, playerHp:10, coopHp:8,  bossHpMult:1.0, spawnDelayMult:1.0 },
-  HARD:   { label:'ยาก',    labelEn:'Hard',   enemyHpMult:1.4, enemySpeedMult:1.2, playerHp:8,  coopHp:5,  bossHpMult:1.5, spawnDelayMult:0.7 },
+  EASY:   { label:'🐣 มือใหม่',  labelEn:'Beginner', enemyHpMult:0.7, enemySpeedMult:0.8, playerHp:12, coopHp:10, bossHpMult:0.6, spawnDelayMult:1.4 },
+  MEDIUM: { label:'⭐ นักผจญภัย', labelEn:'Explorer', enemyHpMult:1.0, enemySpeedMult:1.0, playerHp:10, coopHp:8,  bossHpMult:1.0, spawnDelayMult:1.0 },
+  HARD:   { label:'🏆 ผู้พิทักษ์', labelEn:'Guardian', enemyHpMult:1.4, enemySpeedMult:1.2, playerHp:8,  coopHp:5,  bossHpMult:1.5, spawnDelayMult:0.7 },
 };
 
 // ── Play Area ────────────────────────────────────────
@@ -172,11 +172,16 @@ const JOYPAD_PAD=10; // padding from edges
 const JPC_Y=HEIGHT-JOYPAD_H/2; // center Y
 
 const JBTN={
-  LEFT: {x:JOYPAD_PAD,                              y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'◀', hint:'Left'},
-  RIGHT:{x:JOYPAD_PAD+BTN_W+BTN_GAP,               y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'▶', hint:'Right'},
-  B:    {x:WIDTH-JOYPAD_PAD-BTN_W*2-BTN_GAP,        y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'B', hint:'Attack'},
-  A:    {x:WIDTH-JOYPAD_PAD-BTN_W,                   y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'A', hint:'Jump'},
+  LEFT: {x:JOYPAD_PAD,                              y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'◀', hint:'ซ้าย'},
+  RIGHT:{x:JOYPAD_PAD+BTN_W+BTN_GAP,               y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'▶', hint:'ขวา'},
+  B:    {x:WIDTH-JOYPAD_PAD-BTN_W*2-BTN_GAP,        y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'B', hint:'ยิง'},
+  A:    {x:WIDTH-JOYPAD_PAD-BTN_W,                   y:JPC_Y-BTN_H/2, w:BTN_W, h:BTN_H, label:'A', hint:'กระโดด'},
 };
+
+// ── Screen Time ───────────────────────────────────────
+const SCREEN_TIME_KEY = 'tinyGuardian_screenTime_v1';
+const SCREEN_TIME_LIMIT_MS = 20 * 60 * 1000; // 20 นาที
+const SCREEN_TIME_BREAK_MS =  5 * 60 * 1000; // พัก 5 นาที
 
 // ── Audio Volume ─────────────────────────────────────
 const BGM_VOLUME = 0.35;

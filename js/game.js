@@ -47,6 +47,11 @@ class Game {
     this.particles = [];
     this.introTimer = 0;
 
+    // Screen Time
+    this._sessionMs = 0;          // เวลาเล่นสะสมใน session นี้
+    this._breakTimer = 0;         // countdown พักที่เหลือ (ms)
+    this._breakActive = false;
+
     this._audioCtx = window._audioCtx || null;
     this._lastTime = 0;
     this._raf = null;
@@ -167,6 +172,7 @@ class Game {
     this.player.reset();
     this.introTimer = 0;
     this._lastTime = performance.now();
+    this._loadScreenTime();
     this._bindVisibility();
     this._loop(this._lastTime);
     window._game = this;
@@ -191,6 +197,32 @@ class Game {
 
   _update(dt) {
     if (this._inputLock > 0) this._inputLock -= dt * 1000;
+
+    // ── Screen Time ──────────────────────────────────
+    if (this._breakActive) {
+      this._breakTimer -= dt * 1000;
+      if (this._breakTimer <= 0) {
+        // พักครบแล้ว → reset และเล่นต่อ
+        this._breakActive = false;
+        this._breakTimer = 0;
+        this._sessionMs = 0;
+        this._saveScreenTime();
+      }
+      return;
+    }
+    if (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR) {
+      this._sessionMs += dt * 1000;
+      // save ทุก 1 นาที — ป้องกัน refresh หรือ crash
+      if (!this._lastScreenTimeSave) this._lastScreenTimeSave = Date.now();
+      if (Date.now() - this._lastScreenTimeSave >= 60 * 1000) {
+        this._saveScreenTime();
+        this._lastScreenTimeSave = Date.now();
+      }
+      if (this._sessionMs >= SCREEN_TIME_LIMIT_MS) {
+        this._triggerBreak();
+        return;
+      }
+    }
 
     switch (this.state) {
       case STATE.INTRO:    this.introTimer += dt; this._stopBGM('bgm'); break;
@@ -298,13 +330,13 @@ class Game {
     if (this.coopMode) {
       // Co-op: game over only when BOTH players dead
       if (this.player.hp <= 0 && (!this.player2 || this.player2.hp <= 0)) {
-        this.playSfx('die');
+        this.playSfx('hit');
         this.state = STATE.GAME_OVER;
         this.stageClearTimer = 2.5;
       }
     } else {
       if (this.player.hp <= 0) {
-        this.playSfx('die');
+        this.playSfx('hit');
         this.state = STATE.GAME_OVER;
         this.stageClearTimer = 2.5;
       }
@@ -349,7 +381,7 @@ class Game {
 
       // Co-op game over — check AFTER P2 collision update
       if (this.player.hp <= 0 && this.player2.hp <= 0 && this.state === STATE.PLAYING) {
-        this.playSfx('die');
+        this.playSfx('hit');
         this.state = STATE.GAME_OVER;
         this.stageClearTimer = 2.5;
       }
@@ -593,9 +625,6 @@ class Game {
             this.hud.addComboPopup('+1 HP', item.x, item.y, COL.HEART_ON);
             this.playSfx('powerup');
           }
-        } else if (item.healsFat) {
-          this.player.healFat(this);
-          this.hud.addComboPopup('Slim!', item.x, item.y, COL.MINT);
         } else {
           this.player.score += item.points;
           this.player.itemsCollected++;
@@ -648,7 +677,6 @@ class Game {
     this.player.y = GROUND_Y - this.player.h;
     this.player.vy = 0;
     this.player.grounded = true;
-    this.player.fatLevel = 0;
     // Reset P2 position if co-op
     if (this.player2) {
       this.player2.x = WIDTH - PLAYER_W - 30;
@@ -776,6 +804,8 @@ class Game {
       case STATE.NAME:        this.nameScreen.draw(ctx); break;
       case STATE.RANKING:     this.rankingScreen.draw(ctx); break;
     }
+    // Break overlay — วาดทับทุก state
+    if (this._breakActive) this._drawBreak(ctx);
     this._drawParticles(ctx);
   }
 
@@ -827,17 +857,19 @@ class Game {
     // Difficulty selector
     ctx.font = '12px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('ระดับความยาก:', WIDTH/2, 422);
-    const diffs = [['EASY','🟢 ง่าย'],['MEDIUM','🟡 ปกติ'],['HARD','🔴 ยาก']];
-    const dw=75, dh=30, dg=8, dx0=(WIDTH-(dw*3+dg*2))/2;
+    ctx.fillText('เลือกระดับการเล่น:', WIDTH/2, 422);
+    const diffs = [['EASY','MEDIUM','HARD']];
+    const dw=108, dh=34, dg=6, dx0=(WIDTH-(dw*3+dg*2))/2;
     for(let i=0;i<3;i++){
-      const x=dx0+i*(dw+dg), y=434;
-      const sel=this.difficulty===DIFFICULTY[diffs[i][0]];
+      const key=['EASY','MEDIUM','HARD'][i];
+      const x=dx0+i*(dw+dg), y=432;
+      const sel=this.difficulty===DIFFICULTY[key];
       ctx.fillStyle=sel?COL.PRIMARY:'rgba(255,236,179,0.6)';
       _rr(ctx,x,y,dw,dh,8);ctx.fill();
       if(sel){ctx.strokeStyle=COL.PRIMARY_D;ctx.lineWidth=2;_rr(ctx,x,y,dw,dh,8);ctx.stroke();}
-      ctx.fillStyle=sel?'#FFF':COL.HUD_TEXT;ctx.font=(sel?'bold ':'')+' 11px '+FONT.MAIN;
-      ctx.fillText(diffs[i][1],x+dw/2,y+dh/2);
+      ctx.fillStyle=sel?COL.HUD_TEXT:'rgba(93,64,55,0.7)';
+      ctx.font=(sel?'bold ':'')+'11px '+FONT.MAIN;
+      ctx.fillText(DIFFICULTY[key].label,x+dw/2,y+dh/2);
     }
 
     // Solo play button
@@ -940,9 +972,11 @@ class Game {
     ctx.save();
     ctx.fillStyle = 'rgba(255,248,225,0.88)'; ctx.fillRect(0,0,WIDTH,HEIGHT);
     ctx.font = '34px '+FONT.MAIN; ctx.fillStyle = COL.HEART_ON; ctx.textAlign = 'center';
-    ctx.fillText('GAME OVER', WIDTH/2, HEIGHT/2-20);
-    ctx.font = '14px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('คะแนน: '+this.player.score.toLocaleString(), WIDTH/2, HEIGHT/2+20);
+    ctx.fillText('หมดแรงแล้ว! 💫', WIDTH/2, HEIGHT/2-20);
+    ctx.font = '16px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
+    ctx.fillText('ลองใหม่นะ! 🌟', WIDTH/2, HEIGHT/2+16);
+    ctx.font = '14px '+FONT.BODY;
+    ctx.fillText('คะแนน: '+this.player.score.toLocaleString(), WIDTH/2, HEIGHT/2+42);
     ctx.restore();
   }
 
@@ -1016,9 +1050,9 @@ class Game {
   }
 
   _handleIntroTap(pos) {
-    // Difficulty buttons: y 434-464
-    if (pos.y >= 434 && pos.y <= 464) {
-      const dw=75, dg=8, dx0=(WIDTH-(dw*3+dg*2))/2;
+    // Difficulty buttons: y 432-466 (dh=34)
+    if (pos.y >= 432 && pos.y <= 466) {
+      const dw=108, dg=6, dx0=(WIDTH-(dw*3+dg*2))/2;
       if (pos.x >= dx0 && pos.x <= dx0+dw) { this.difficulty = DIFFICULTY.EASY; return true; }
       if (pos.x >= dx0+dw+dg && pos.x <= dx0+dw*2+dg) { this.difficulty = DIFFICULTY.MEDIUM; return true; }
       if (pos.x >= dx0+dw*2+dg*2 && pos.x <= dx0+dw*3+dg*2) { this.difficulty = DIFFICULTY.HARD; return true; }
@@ -1173,6 +1207,129 @@ class Game {
   // ══════════════════════════════════════════════════
   //  AUDIO
   // ══════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
+  //  SCREEN TIME
+  // ══════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════
+  //  SCREEN TIME — ใช้ timestamp จริง ไม่ใช่ frame counter
+  // ══════════════════════════════════════════════════
+  _loadScreenTime() {
+    try {
+      const raw = localStorage.getItem(SCREEN_TIME_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      const now = Date.now();
+
+      // ถ้ากำลังพักอยู่ (breakUntil มีค่า)
+      if (data.breakUntil) {
+        if (now >= data.breakUntil) {
+          // พักครบแล้ว (ปิด app ไปเล่นอย่างอื่น) → reset ทันที
+          this._sessionMs = 0;
+          this._breakActive = false;
+          this._saveScreenTime();
+        } else {
+          // ยังต้องพักอยู่ → เข้า break mode ต่อ
+          this._breakActive = true;
+          this._breakTimer = data.breakUntil - now;
+          this._sessionMs = data.playMs || 0;
+        }
+        return;
+      }
+
+      // reset ถ้าบันทึกไว้นานกว่า 24 ชั่วโมง
+      const age = now - (data.dayTs || 0);
+      if (age >= 24 * 60 * 60 * 1000) return;
+
+      // คำนวณเวลาที่ผ่านไปขณะ app ปิด/background
+      let playMs = data.playMs || 0;
+      if (data.startTs) {
+        const elapsed = now - data.startTs;
+        // นับเฉพาะถ้า app ปิดไม่เกิน 1 ชั่วโมง (ป้องกันนับเวลาข้ามคืน)
+        if (elapsed > 0 && elapsed < 60 * 60 * 1000) {
+          playMs += elapsed;
+        }
+      }
+      this._sessionMs = Math.min(playMs, SCREEN_TIME_LIMIT_MS);
+
+      // ถ้าโหลดมาแล้วครบ limit เลย → trigger break ทันที
+      if (this._sessionMs >= SCREEN_TIME_LIMIT_MS) {
+        this._triggerBreak();
+      }
+    } catch(e) {}
+  }
+
+  _saveScreenTime() {
+    try {
+      const now = Date.now();
+      const data = {
+        playMs:    this._sessionMs,
+        startTs:   (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR)
+                   ? now : null,  // บันทึก timestamp เริ่มต้น session ปัจจุบัน
+        breakUntil: this._breakActive ? (now + this._breakTimer) : null,
+        dayTs:     now,
+      };
+      localStorage.setItem(SCREEN_TIME_KEY, JSON.stringify(data));
+    } catch(e) {}
+  }
+
+  _triggerBreak() {
+    this._breakActive = true;
+    this._breakTimer = SCREEN_TIME_BREAK_MS;
+    this._stopBGM('bgm');
+    if (this.state === STATE.PLAYING) {
+      this.state = STATE.GAME_OVER;
+      this.stageClearTimer = 99999;
+    }
+    this._saveScreenTime(); // บันทึก breakUntil = now + 5 นาที
+  }
+
+  _drawBreak(ctx) {
+    // Full overlay
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,248,225,0.97)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Icon
+    ctx.font = '64px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('👀', WIDTH/2, HEIGHT/2 - 120);
+
+    // Title
+    ctx.font = 'bold 26px ' + FONT.MAIN;
+    ctx.fillStyle = COL.PRIMARY_D;
+    ctx.fillText('เล่นมานานแล้วนะ!', WIDTH/2, HEIGHT/2 - 40);
+
+    // Subtitle
+    ctx.font = '15px ' + FONT.BODY;
+    ctx.fillStyle = COL.HUD_TEXT;
+    ctx.fillText('พักสายตาสักครู่ก่อนนะ 🌟', WIDTH/2, HEIGHT/2);
+
+    // Countdown
+    const secLeft = Math.ceil(this._breakTimer / 1000);
+    const min = Math.floor(secLeft / 60);
+    const sec = secLeft % 60;
+    const timeStr = min + ':' + (sec < 10 ? '0' : '') + sec;
+
+    ctx.font = 'bold 48px ' + FONT.MAIN;
+    ctx.fillStyle = COL.PRIMARY_D;
+    ctx.fillText(timeStr, WIDTH/2, HEIGHT/2 + 70);
+
+    ctx.font = '13px ' + FONT.BODY;
+    ctx.fillStyle = 'rgba(93,64,55,0.6)';
+    ctx.fillText('อีกสักครู่จะเล่นต่อได้เลย!', WIDTH/2, HEIGHT/2 + 120);
+
+    // Progress bar
+    const pct = 1 - (this._breakTimer / SCREEN_TIME_BREAK_MS);
+    const bw = 260, bh = 10, bx = WIDTH/2 - bw/2, by = HEIGHT/2 + 148;
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    ctx.beginPath(); _rr(ctx, bx, by, bw, bh, 5); ctx.fill();
+    ctx.fillStyle = COL.PRIMARY;
+    ctx.beginPath(); _rr(ctx, bx, by, bw * pct, bh, 5); ctx.fill();
+
+    ctx.restore();
+  }
+
   playSfx(key) {
     // Co-op: Host relay SFX ไปยัง Guest ด้วย
     if (this.coopMode && this.net && this.net.isHost && this.net.connected) {
@@ -1289,11 +1446,16 @@ class Game {
   _bindVisibility() {
     document.addEventListener('visibilitychange', () => {
       const bgm = window._bgmEl;
-      if (!bgm) return;
       if (document.hidden) {
-        bgm.pause();
-      } else if (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR) {
-        bgm.play().catch(() => {});
+        if (bgm) bgm.pause();
+        // บันทึกเวลาจริง + timestamp ขณะออกไป background
+        this._saveScreenTime();
+      } else {
+        // กลับมา → โหลด timestamp และคำนวณเวลาที่ผ่านไป
+        this._loadScreenTime();
+        if (bgm && (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR)) {
+          bgm.play().catch(() => {});
+        }
       }
     });
   }
