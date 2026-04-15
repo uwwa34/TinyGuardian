@@ -4,17 +4,18 @@
 // ═══════════════════════════════════════════════════
 
 class Projectile {
-  constructor(x, y, dir, charged, angleY) {
+  constructor(x, y, dir, charged, angleY, owner) {
     this.x = x;
     this.y = y;
-    this.dir = dir;       // 1=right, -1=left
+    this.dir = dir;
     this.charged = charged;
     this.w = charged ? PROJ_CHARGE_W : PROJ_W;
     this.h = charged ? PROJ_CHARGE_H : PROJ_H;
     this.damage = charged ? PROJ_DMG_CHARGE : PROJ_DMG_NORMAL;
     this.speed = PROJ_SPEED;
-    this.angleY = angleY || 0; // for triple shot
-    this.pierce = charged ? 1 : 0; // can pierce 1 enemy if charged
+    this.angleY = angleY || 0;
+    this.pierce = charged ? 1 : 0;
+    this.owner = owner || 'p1'; // 'p1' | 'p2'
     this.alive = true;
     this.trail = [];
   }
@@ -128,8 +129,8 @@ class ProjectileManager {
     this.enemyBullets = [];
   }
 
-  addPlayerBullet(x, y, dir, charged, angleY) {
-    this.playerBullets.push(new Projectile(x, y, dir, charged, angleY));
+  addPlayerBullet(x, y, dir, charged, angleY, owner) {
+    this.playerBullets.push(new Projectile(x, y, dir, charged, angleY, owner));
   }
 
   addEnemyBullet(x, y, vx, vy, type) {

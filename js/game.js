@@ -81,8 +81,12 @@ class Game {
           this.coopLobby.state = 'ready';
           break;
         case 'game_start':
-          // data คือ diffKey ที่ Host ส่งมาพร้อม start — set ก่อน startCoopGame เสมอ
-          if (data && DIFFICULTY[data]) this.difficulty = DIFFICULTY[data];
+          // data = { diff, chp } — set difficulty และ maxHp จาก Host ก่อน startCoopGame เสมอ
+          if (data && data.diff && DIFFICULTY[data.diff]) this.difficulty = DIFFICULTY[data.diff];
+          if (data && data.chp) {
+            // override coopHp ด้วยค่าจาก Host โดยตรง ป้องกัน mismatch
+            this._coopHpOverride = data.chp;
+          }
           this._startCoopGame();
           break;
         case 'peer_left':
@@ -138,10 +142,13 @@ class Game {
     this._prevP2BtnA = false;
     this._prevP2BtnA_host = false;
 
-    const chp = this.difficulty.coopHp;
+    // ใช้ค่า HP จาก Host โดยตรงถ้ามี (ป้องกัน difficulty mismatch)
+    const chp = this._coopHpOverride || this.difficulty.coopHp;
+    this._coopHpOverride = null;
+
     this.player.reset(); this.player.maxHp = chp; this.player.hp = chp;
     this.player.coopActive = true;
-    this.player.isP2 = false;  // Ensure P1 looks like P1
+    this.player.isP2 = false;
 
     this.player2 = new Player();
     this.player2.reset(); this.player2.maxHp = chp; this.player2.hp = chp;
@@ -240,7 +247,10 @@ class Game {
             else this._startStage(this.currentStage);
           }
         }
-        if (this.coopMode && this.player2) this._updateCoop(dt);
+        // _updateCoop: รัน ถ้า coopMode+player2 ปกติ หรือถ้า Guest กำลังรอ TALLY
+        if ((this.coopMode && this.player2) || (this.net && this.net.isGuest && this._waitingForTally)) {
+          this._updateCoop(dt);
+        }
         this._playBGM('bgm');
         break;
       case STATE.GAME_OVER:
@@ -248,10 +258,21 @@ class Game {
           this.stageClearTimer -= dt;
           if (this.stageClearTimer <= 0) this._goTally();
         }
-        if (this.coopMode && this.player2) this._updateCoop(dt);
+        if ((this.coopMode && this.player2) || (this.net && this.net.isGuest && this._waitingForTally)) {
+          this._updateCoop(dt);
+        }
         this._bgmFadeOut(2.0);
         break;
-      case STATE.TALLY:  this.tally.update(dt); this._stopBGM('bgm'); break;
+      case STATE.TALLY:
+        this.tally.update(dt);
+        this._stopBGM('bgm');
+        // Guest: ยังรับ pending TALLY packet จาก Host ได้ (กรณี packet มาช้า)
+        if (this.net && this.net.isGuest && this.net.peerState) {
+          const ps = this.net.peerState;
+          this.net.peerState = null;
+          if (ps.gs === STATE.TALLY) this._applyGuestTally(ps);
+        }
+        break;
       case STATE.NAME:   this.nameScreen.update(dt); break;
       case STATE.RANKING: this.rankingScreen.update(); break;
     }
@@ -376,7 +397,22 @@ class Game {
           if (this.boss && !this.boss.dying && this._aabb(p2H,this.boss.getHitbox())) this.player2.takeDamage(this);
         }
         for (const eb of this.projManager.enemyBullets) { if (eb.alive && this._aabb(p2H,eb.getHitbox())) { eb.alive=false; this.player2.takeDamage(this); } }
-        for (const it of this.itemManager.items) { if (it.alive && this._aabb(p2H,it.getHitbox())) { it.alive=false; if(it.healsHp&&this.player2.hp<this.player2.maxHp)this.player2.hp++; else if(!it.healsFat&&!it.healsHp){this.player2.score+=it.points;this.player2.itemsCollected++;} } }
+        for (const it of this.itemManager.items) {
+          if (it.alive && this._aabb(p2H, it.getHitbox())) {
+            it.alive = false;
+            if (it.healsHp && this.player2.hp < this.player2.maxHp) {
+              this.player2.hp++;
+              this.hud.addComboPopup('+1 HP', it.x, it.y, COL.HEART_ON);
+              this.playSfx('powerup');
+            } else if (!it.healsFat && !it.healsHp) {
+              this.player2.score += it.points;
+              this.player2.itemsCollected++;
+              this.playSfx('coin');
+              if (it.points > 0) this.hud.addComboPopup('+' + it.points, it.x, it.y, '#42A5F5');
+            }
+            this._spawnParticles(it.x + it.w/2, it.y + it.h/2, '#42A5F5', 5);
+          }
+        }
       }
 
       // Co-op game over — check AFTER P2 collision update
@@ -531,22 +567,13 @@ class Game {
           this.state=STATE.STAGE_CLEAR;
           this.stageClearTimer=2.5;
           this.hud.addNotification('✨ Stage Clear!');
+          // ถ้า stage 4 จบแล้ว → รอ TALLY packet จาก Host
+          if(this.currentStage > 4) this._waitingForTally = true;
         } else if(newState===STATE.GAME_OVER){
           this.state=STATE.GAME_OVER;
           this.stageClearTimer=2.5;
         } else if(newState===STATE.TALLY){
-          // Guest tally — use Host's merged data
-          if(s.p1){
-            this.player.score = s.p1.score || 0;
-            this.player.kills = s.p1.kills || 0;
-            this.player.itemsCollected = s.p1.items || 0;
-          }
-          this.stagesCleared = s.sc || this.stagesCleared || 0;
-          this.tally.init(this.player, this.stagesCleared, this.timeBonuses||[]);
-          this.state=STATE.TALLY;
-          this._inputLock=800;
-          this.coopMode=false;this.player2=null;this.player.coopActive=false;
-          this.net.disconnect();
+          this._applyGuestTally(s);
         } else {
           this.state=newState;
         }
@@ -571,7 +598,7 @@ class Game {
         if (this._aabb(bH, enemy.getHitbox())) {
           enemy.takeDamage(bullet.damage);
           if (bullet.pierce > 0) bullet.pierce--; else bullet.alive = false;
-          if (enemy.dying) this._onEnemyKill(enemy);
+          if (enemy.dying) this._onEnemyKill(enemy, bullet.owner);
           break;
         }
       }
@@ -580,7 +607,7 @@ class Game {
         if (this._aabb(bH, this.boss.getHitbox())) {
           this.boss.takeDamage(bullet.damage, this);
           if (bullet.pierce > 0) bullet.pierce--; else bullet.alive = false;
-          if (this.boss && this.boss.dying) this._onBossKill();
+          if (this.boss && this.boss.dying) this._onBossKill(bullet.owner);
         }
       }
     }
@@ -636,23 +663,26 @@ class Game {
     }
   }
 
-  _onEnemyKill(enemy) {
-    this.player.kills++;
-    this.player.addCombo();
-    const mult = this.player.getComboMultiplier();
+  _onEnemyKill(enemy, owner) {
+    const scorer = (this.coopMode && this.player2 && owner === 'p2') ? this.player2 : this.player;
+    scorer.kills++;
+    scorer.addCombo();
+    const mult = scorer.getComboMultiplier();
     const pts = enemy.points * mult;
-    this.player.score += pts;
-    this.hud.addComboPopup('+' + pts + (mult > 1 ? ' ×' + mult : ''), enemy.x + enemy.w/2, enemy.y, COL.GOLD);
+    scorer.score += pts;
+    const popColor = scorer.isP2 ? '#42A5F5' : COL.GOLD;
+    this.hud.addComboPopup('+' + pts + (mult > 1 ? ' ×' + mult : ''), enemy.x + enemy.w/2, enemy.y, popColor);
     this.playSfx('enemy_die');
     this.itemManager.dropFromEnemy(enemy.x, enemy.y, this.currentStage);
     this._spawnParticles(enemy.x + enemy.w/2, enemy.y + enemy.h/2, enemy.def.color, 8);
   }
 
-  _onBossKill() {
+  _onBossKill(owner) {
     if (!this.boss) return;
+    const scorer = (this.coopMode && this.player2 && owner === 'p2') ? this.player2 : this.player;
     const pts = this.boss.points;
-    this.player.score += pts;
-    this.player.kills++;
+    scorer.score += pts;
+    scorer.kills++;
     this.hud.addComboPopup('+' + pts + ' BOSS!', this.boss.x + this.boss.w/2, this.boss.y, COL.GOLD);
     this._spawnParticles(this.boss.x + this.boss.w/2, this.boss.y + this.boss.h/2, COL.GOLD, 20);
     this.itemManager.spawnItem('HEART', this.boss.x + this.boss.w/2 - 15, this.boss.y);
@@ -703,14 +733,14 @@ class Game {
       this.boss = new BossUnit(MINIBOSS, p.x + p.w/2 - MINIBOSS.w/2, p.y - MINIBOSS.h, false);
       this.boss.hp = Math.ceil(this.boss.hp * this.difficulty.bossHpMult);
       this.boss.maxHp = this.boss.hp;
-      this.hud.addNotification('⚠️ ' + MINIBOSS.name + ' ปรากฏตัว!');
+      this.hud.addNotification('⚠️ บอสปรากฏตัว!');
       this.playSfx('boss_warning');
     } else if (waveData === 'BOSS') {
       const topPlat = this.world.platforms.reduce((a, b) => a.y < b.y ? a : b);
       this.boss = new BossUnit(BOSS, topPlat.x + topPlat.w/2 - BOSS.w/2, topPlat.y - BOSS.h, true);
       this.boss.hp = Math.ceil(this.boss.hp * this.difficulty.bossHpMult);
       this.boss.maxHp = this.boss.hp;
-      this.hud.addNotification('⚠️ ' + BOSS.name + ' มาแล้ว!');
+      this.hud.addNotification('⚠️ จอมวายร้ายมาแล้ว!');
       this.playSfx('boss_warning');
     } else {
       this.enemyManager.spawnWave(waveData, this.world, this.player, this.difficulty);
@@ -738,30 +768,45 @@ class Game {
       this.player.itemsCollected += this.player2.itemsCollected || 0;
     }
 
-    // Force send TALLY to Guest (ก่อน cleanup เพราะต้องการ net ยังเชื่อมต่ออยู่)
+    // สร้าง payload ก่อน cleanup
+    const tallyPayload = {
+      p1:{ score:this.player.score, kills:this.player.kills, items:this.player.itemsCollected },
+      p2:null, en:[], bo:null, pb:[], eb:[], it:[],
+      ti:0, gs:STATE.TALLY, st:this.currentStage, sc:this.stagesCleared,
+      tb:this.timeBonuses,
+    };
+
+    // Force send TALLY to Guest — ส่ง 3 ครั้ง ยังไม่ cleanup coopMode ให้ _updateCoop ยังทำงาน
     if (this.coopMode && this.net && this.net.connected) {
-      const tallyPayload = {
-        p1:{score:this.player.score, kills:this.player.kills, items:this.player.itemsCollected},
-        p2:null, en:[], bo:null, pb:[], eb:[], it:[],
-        ti:0, gs:STATE.TALLY, st:this.currentStage, sc:this.stagesCleared,
-      };
       this.net.forceSendState(tallyPayload);
-      setTimeout(() => { try{if(this.net&&this.net.connected)this.net.forceSendState(tallyPayload);}catch(e){} }, 100);
-      setTimeout(() => { try{if(this.net&&this.net.connected)this.net.forceSendState(tallyPayload);}catch(e){} }, 300);
+      setTimeout(() => { try{ if(this.net&&this.net.connected) this.net.forceSendState(tallyPayload); }catch(e){} }, 80);
+      setTimeout(() => { try{ if(this.net&&this.net.connected) this.net.forceSendState(tallyPayload); }catch(e){} }, 200);
+      // cleanup และ disconnect หลังจากส่งครบ
+      setTimeout(() => {
+        try{ this.net.disconnect(); }catch(e){}
+      }, 500);
     }
 
-    // Cleanup coop ก่อน switch state — ป้องกัน _draw() เรียก _drawPlaying() แล้ว HUD ค้าง
-    this.coopMode = false;
+    // เก็บ flag ให้ _updateCoop (isGuest path) ยังส่ง state ได้ 500ms
+    // แต่ cleanup visual coop ทันที (ป้องกัน HUD ค้าง)
+    this._tallyPending = true;
     this.player2 = null;
     this.player.coopActive = false;
 
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
+
+    // cleanup coopMode หลัง 600ms (หลัง Guest receive TALLY แน่นอน)
+    setTimeout(() => {
+      this.coopMode = false;
+      this._tallyPending = false;
+    this._waitingForTally = false;
+    }, 600);
   }
 
-  spawnProjectile(x, y, dir, charged, angleY) {
-    this.projManager.addPlayerBullet(x, y, dir, charged, angleY);
+  spawnProjectile(x, y, dir, charged, angleY, owner) {
+    this.projManager.addPlayerBullet(x, y, dir, charged, angleY, owner);
   }
 
   bombAllEnemies() {
@@ -1074,9 +1119,8 @@ class Game {
       this.coopLobby.state = 'connecting';
       this.net.joinRoom(this.coopLobby.inputCode, COOP_SERVER_URL);
     } else if (action === 'start') {
-      // Send difficulty to Guest before starting
       const diffKey = Object.keys(DIFFICULTY).find(k => DIFFICULTY[k] === this.difficulty) || 'MEDIUM';
-      this.net.startGame(diffKey);
+      this.net.startGame(diffKey, this.difficulty.coopHp);
     } else if (action === 'back') {
       this.net.disconnect();
       this.state = STATE.INTRO;
@@ -1194,10 +1238,11 @@ class Game {
   }
 
   _restartGame() {
-    // Clean up co-op
     this.coopMode = false;
     this.player2 = null;
     this.player.coopActive = false;
+    this._tallyPending = false;
+    this._waitingForTally = false;
     this.net.disconnect();
 
     this.state = STATE.INTRO;
@@ -1329,6 +1374,27 @@ class Game {
     ctx.beginPath(); _rr(ctx, bx, by, bw * pct, bh, 5); ctx.fill();
 
     ctx.restore();
+  }
+
+  // ── Guest: รับข้อมูล Tally จาก Host ──────────────────
+  _applyGuestTally(s) {
+    // ถ้าเข้ามาซ้ำ (packet ส่งหลายครั้ง) ให้ข้ามถ้า TALLY แสดงอยู่แล้ว
+    if (this.state === STATE.TALLY && !this._waitingForTally) return;
+    if (s.p1) {
+      this.player.score         = s.p1.score || 0;
+      this.player.kills         = s.p1.kills || 0;
+      this.player.itemsCollected= s.p1.items || 0;
+    }
+    if (s.tb && Array.isArray(s.tb)) this.timeBonuses = s.tb;
+    this.stagesCleared = s.sc || this.stagesCleared || 0;
+    this.tally.init(this.player, this.stagesCleared, this.timeBonuses || []);
+    this.state = STATE.TALLY;
+    this._inputLock = 800;
+    this._waitingForTally = false;
+    this.coopMode = false;
+    this.player2 = null;
+    this.player.coopActive = false;
+    try { this.net.disconnect(); } catch(e) {}
   }
 
   playSfx(key) {

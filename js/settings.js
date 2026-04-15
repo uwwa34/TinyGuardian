@@ -104,7 +104,7 @@ const STAGE_WAVES={
 
 const STAGE_TIME={1:90,2:90,3:90,4:120};
 
-const MINIBOSS={name:'คัพเค้กยักษ์',emoji:'🧁',w:96,h:96,hp:8,speed:150,points:800,angryHp:3,angrySpeed:210,shootCount:3,angryShootCount:5,color:'#F8BBD0',angryColor:'#EF5350'};
+const MINIBOSS={name:'บอสลึกลับ',emoji:'🧁',w:96,h:96,hp:8,speed:150,points:800,angryHp:3,angrySpeed:210,shootCount:3,angryShootCount:5,color:'#F8BBD0',angryColor:'#EF5350'};
 
 const BOSS={name:'จอมวายร้ายจิ๋ว',emoji:'👿',w:150,h:150,hp:15,speed:120,points:2000,
   phase2hp:10,phase3hp:5,

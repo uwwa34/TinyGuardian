@@ -221,7 +221,7 @@ class Player {
     if (game) {
       const px = this.facing > 0 ? this.x + this.w : this.x - PROJ_W;
       const py = this.y + this.h / 2 - PROJ_H / 2;
-      game.spawnProjectile(px, py, this.facing, false);
+      game.spawnProjectile(px, py, this.facing, false, 0, this.isP2 ? 'p2' : 'p1');
       game.playSfx('attack');
     }
   }
@@ -232,7 +232,7 @@ class Player {
     if (game) {
       const px = this.facing > 0 ? this.x + this.w : this.x - PROJ_CHARGE_W;
       const py = this.y + this.h / 2 - PROJ_CHARGE_H / 2;
-      game.spawnProjectile(px, py, this.facing, true);
+      game.spawnProjectile(px, py, this.facing, true, 0, this.isP2 ? 'p2' : 'p1');
       game.playSfx('charge_release');
     }
   }
