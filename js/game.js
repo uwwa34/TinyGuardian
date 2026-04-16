@@ -52,6 +52,12 @@ class Game {
     this._breakTimer = 0;         // countdown พักที่เหลือ (ms)
     this._breakActive = false;
 
+    // Co-op helpers
+    this._coopHpOverride = null;
+    this._tallyPending = false;
+    this._tallyPayload = null;
+    this._waitingForTally = false;
+
     this._audioCtx = window._audioCtx || null;
     this._lastTime = 0;
     this._raf = null;
@@ -172,6 +178,11 @@ class Game {
     if (data.event === 'set_difficulty' && data.diff && DIFFICULTY[data.diff]) {
       this.difficulty = DIFFICULTY[data.diff];
     }
+    // set_coop_start: Host ส่ง diff+chp ผ่าน event channel ก่อน start message เสมอ
+    if (data.event === 'set_coop_start') {
+      if (data.diff && DIFFICULTY[data.diff]) this.difficulty = DIFFICULTY[data.diff];
+      if (data.chp) this._coopHpOverride = data.chp;
+    }
   }
 
   start() {
@@ -266,6 +277,16 @@ class Game {
       case STATE.TALLY:
         this.tally.update(dt);
         this._stopBGM('bgm');
+        // HOST: ส่ง tallyPayload ซ้ำทุก frame จนกว่า Guest disconnect (reliable delivery)
+        if (this._tallyPending && this.net && this.net.isHost && this.net.connected) {
+          this.net.sendGameState(this._tallyPayload);
+        }
+        // HOST: ถ้า Guest disconnect แล้ว → cleanup coop
+        if (this._tallyPending && this.net && this.net.isHost && !this.net.connected) {
+          this.coopMode = false;
+          this._tallyPending = false;
+          this._tallyPayload = null;
+        }
         // Guest: ยังรับ pending TALLY packet จาก Host ได้ (กรณี packet มาช้า)
         if (this.net && this.net.isGuest && this.net.peerState) {
           const ps = this.net.peerState;
@@ -553,22 +574,25 @@ class Game {
       // ── Timer ──
       if(s.ti!==undefined) this.stageTimer=s.ti;
 
-      // ── Stage change ──
+      // ── Stage change — apply BEFORE state transition so currentStage is correct ──
       if(s.st&&s.st!==this.currentStage){
         this.currentStage=s.st;
         this.world.loadStage(s.st);
         this.boss=null;
       }
 
-      // ── Game state transition (the critical part) ──
+      // ── Stages cleared count from Host — apply BEFORE state transition ──
+      if(s.sc!==undefined) this.stagesCleared=s.sc;
+
+      // ── Game state transition ──
       if(s.gs && s.gs!==this.state){
         const newState=s.gs;
         if(newState===STATE.STAGE_CLEAR){
           this.state=STATE.STAGE_CLEAR;
           this.stageClearTimer=2.5;
           this.hud.addNotification('✨ Stage Clear!');
-          // ถ้า stage 4 จบแล้ว → รอ TALLY packet จาก Host
-          if(this.currentStage > 4) this._waitingForTally = true;
+          // ใช้ s.st โดยตรง (ไม่ใช้ this.currentStage เพราะอาจยังไม่ update)
+          if((s.st||this.currentStage) > 4) this._waitingForTally = true;
         } else if(newState===STATE.GAME_OVER){
           this.state=STATE.GAME_OVER;
           this.stageClearTimer=2.5;
@@ -578,9 +602,6 @@ class Game {
           this.state=newState;
         }
       }
-
-      // ── Stages cleared count from Host ──
-      if(s.sc!==undefined) this.stagesCleared=s.sc;
 
       this.net.peerState=null;
     }
@@ -761,50 +782,37 @@ class Game {
   }
 
   _goTally() {
-    // Merge P2 stats ก่อน cleanup
+    // Merge P2 stats
     if (this.coopMode && this.player2) {
       this.player.score += this.player2.score;
       this.player.kills += this.player2.kills || 0;
       this.player.itemsCollected += this.player2.itemsCollected || 0;
     }
 
-    // สร้าง payload ก่อน cleanup
-    const tallyPayload = {
+    // เตรียม tally payload — ส่งผ่าน sendGameState loop ทุก 50ms จนกว่า Guest รับ
+    this._tallyPayload = {
       p1:{ score:this.player.score, kills:this.player.kills, items:this.player.itemsCollected },
       p2:null, en:[], bo:null, pb:[], eb:[], it:[],
       ti:0, gs:STATE.TALLY, st:this.currentStage, sc:this.stagesCleared,
       tb:this.timeBonuses,
     };
 
-    // Force send TALLY to Guest — ส่ง 3 ครั้ง ยังไม่ cleanup coopMode ให้ _updateCoop ยังทำงาน
+    // ส่งทันที 1 ครั้งก่อน
     if (this.coopMode && this.net && this.net.connected) {
-      this.net.forceSendState(tallyPayload);
-      setTimeout(() => { try{ if(this.net&&this.net.connected) this.net.forceSendState(tallyPayload); }catch(e){} }, 80);
-      setTimeout(() => { try{ if(this.net&&this.net.connected) this.net.forceSendState(tallyPayload); }catch(e){} }, 200);
-      // cleanup และ disconnect หลังจากส่งครบ
-      setTimeout(() => {
-        try{ this.net.disconnect(); }catch(e){}
-      }, 500);
+      this.net.forceSendState(this._tallyPayload);
     }
 
-    // เก็บ flag ให้ _updateCoop (isGuest path) ยังส่ง state ได้ 500ms
-    // แต่ cleanup visual coop ทันที (ป้องกัน HUD ค้าง)
+    // cleanup visual ทันที — player2=null ป้องกัน HUD ค้าง
+    // แต่ coopMode ยังเป็น true เพื่อให้ _updateCoop ส่ง payload ต่อได้
     this._tallyPending = true;
+    this._waitingForTally = false;
     this.player2 = null;
     this.player.coopActive = false;
 
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
     this._inputLock = 800;
-
-    // cleanup coopMode หลัง 600ms (หลัง Guest receive TALLY แน่นอน)
-    setTimeout(() => {
-      this.coopMode = false;
-      this._tallyPending = false;
-    this._waitingForTally = false;
-    }, 600);
   }
-
   spawnProjectile(x, y, dir, charged, angleY, owner) {
     this.projManager.addPlayerBullet(x, y, dir, charged, angleY, owner);
   }
@@ -1120,7 +1128,11 @@ class Game {
       this.net.joinRoom(this.coopLobby.inputCode, COOP_SERVER_URL);
     } else if (action === 'start') {
       const diffKey = Object.keys(DIFFICULTY).find(k => DIFFICULTY[k] === this.difficulty) || 'MEDIUM';
-      this.net.startGame(diffKey, this.difficulty.coopHp);
+      // ส่ง difficulty+chp ผ่าน event ก่อน (relay ผ่าน server ถึง Guest แน่นอน)
+      // ไม่พึ่ง server.js ว่าจะ relay start payload ครบไหม
+      this.net.sendEvent('set_coop_start', { diff: diffKey, chp: this.difficulty.coopHp });
+      // ส่ง start หลัง event เสมอ
+      setTimeout(() => { this.net.startGame(diffKey, this.difficulty.coopHp); }, 50);
     } else if (action === 'back') {
       this.net.disconnect();
       this.state = STATE.INTRO;
@@ -1242,7 +1254,9 @@ class Game {
     this.player2 = null;
     this.player.coopActive = false;
     this._tallyPending = false;
+    this._tallyPayload = null;
     this._waitingForTally = false;
+    this._coopHpOverride = null;
     this.net.disconnect();
 
     this.state = STATE.INTRO;
