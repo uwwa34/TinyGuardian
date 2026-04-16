@@ -87,12 +87,11 @@ class Game {
           this.coopLobby.state = 'ready';
           break;
         case 'game_start':
-          // data = { diff, chp } — set difficulty และ maxHp จาก Host ก่อน startCoopGame เสมอ
+          // Host เริ่มเกมโดยตรงแล้วใน _handleCoopLobbyTap — ไม่ต้องทำซ้ำ
+          if (this.net.isHost) break;
+          // Guest: รับ diff+chp จาก Host แล้วเริ่มเกม
           if (data && data.diff && DIFFICULTY[data.diff]) this.difficulty = DIFFICULTY[data.diff];
-          if (data && data.chp) {
-            // override coopHp ด้วยค่าจาก Host โดยตรง ป้องกัน mismatch
-            this._coopHpOverride = data.chp;
-          }
+          if (data && data.chp) this._coopHpOverride = data.chp;
           this._startCoopGame();
           break;
         case 'peer_left':
@@ -1128,11 +1127,10 @@ class Game {
       this.net.joinRoom(this.coopLobby.inputCode, COOP_SERVER_URL);
     } else if (action === 'start') {
       const diffKey = Object.keys(DIFFICULTY).find(k => DIFFICULTY[k] === this.difficulty) || 'MEDIUM';
-      // ส่ง difficulty+chp ผ่าน event ก่อน (relay ผ่าน server ถึง Guest แน่นอน)
-      // ไม่พึ่ง server.js ว่าจะ relay start payload ครบไหม
-      this.net.sendEvent('set_coop_start', { diff: diffKey, chp: this.difficulty.coopHp });
-      // ส่ง start หลัง event เสมอ
-      setTimeout(() => { this.net.startGame(diffKey, this.difficulty.coopHp); }, 50);
+      // Host เริ่มเกมด้วย difficulty ของตัวเองทันที — ไม่รอ server round-trip
+      this._startCoopGame();
+      // ส่ง start+diff+chp ให้ Guest ผ่าน server
+      this.net.startGame(diffKey, this.difficulty.coopHp);
     } else if (action === 'back') {
       this.net.disconnect();
       this.state = STATE.INTRO;
