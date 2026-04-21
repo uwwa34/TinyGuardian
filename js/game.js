@@ -57,6 +57,9 @@ class Game {
     this._tallyPending = false;
     this._tallyPayload = null;
     this._waitingForTally = false;
+    this.localCoop = false;   // Local 2-player (same device)
+    this.input2 = { left:false, right:false, btnA:false, btnB:false };
+    this._prevBtnA2 = false;
 
     this._audioCtx = window._audioCtx || null;
     this._lastTime = 0;
@@ -329,6 +332,20 @@ class Game {
     if (this.player.hp > 0) {
       this.player.update(dt, inputForPlayer, this.world, this);
     }
+
+    // Local Co-op: P2 keyboard input
+    if (this.localCoop && this.player2) {
+      const jumpP2 = this.input2.btnA && !this._prevBtnA2;
+      this._prevBtnA2 = this.input2.btnA;
+      if (this.player2.hp > 0) {
+        this.player2.update(dt, {
+          left: this.input2.left, right: this.input2.right,
+          btnA: this.input2.btnA, btnB: this.input2.btnB,
+          jumpPressed: jumpP2,
+        }, this.world, this);
+      }
+    }
+
     this.world.update(dt);
     this.enemyManager.update(dt, this.world, this);
     this.projManager.update(dt);
@@ -368,7 +385,7 @@ class Game {
       }
     }
 
-    if (this.coopMode) {
+    if (this.coopMode || this.localCoop) {
       // Co-op: game over only when BOTH players dead
       if (this.player.hp <= 0 && (!this.player2 || this.player2.hp <= 0)) {
         this.playSfx('hit');
@@ -674,7 +691,7 @@ class Game {
       }
     }
 
-    // Items
+    // Items P1
     for (const item of this.itemManager.items) {
       if (!item.alive) continue;
       if (this._aabb(pH, item.getHitbox())) {
@@ -694,10 +711,43 @@ class Game {
         this._spawnParticles(item.x + item.w/2, item.y + item.h/2, COL.PRIMARY, 5);
       }
     }
+
+    // Local Co-op: P2 collisions (same as online coop P2 block)
+    if (this.localCoop && this.player2) {
+      const p2H = this.player2.getHitbox();
+      if (!this.player2.invincible) {
+        for (const e of this.enemyManager.enemies) {
+          if (!e.dying && this._aabb(p2H, e.getHitbox())) { this.player2.takeDamage(this); break; }
+        }
+        if (this.boss && !this.boss.dying && this._aabb(p2H, this.boss.getHitbox())) {
+          this.player2.takeDamage(this);
+        }
+      }
+      for (const eb of this.projManager.enemyBullets) {
+        if (eb.alive && this._aabb(p2H, eb.getHitbox())) { eb.alive = false; this.player2.takeDamage(this); }
+      }
+      for (const it of this.itemManager.items) {
+        if (it.alive && this._aabb(p2H, it.getHitbox())) {
+          it.alive = false;
+          if (it.healsHp && this.player2.hp < this.player2.maxHp) {
+            this.player2.hp++;
+            this.hud.addComboPopup('+1 HP', it.x, it.y, COL.HEART_ON);
+            this.playSfx('powerup');
+          } else if (!it.healsHp) {
+            this.player2.score += it.points;
+            this.player2.itemsCollected++;
+            this.playSfx('coin');
+            if (it.points > 0) this.hud.addComboPopup('+' + it.points, it.x, it.y, '#42A5F5');
+          }
+          this._spawnParticles(it.x + it.w/2, it.y + it.h/2, '#42A5F5', 5);
+        }
+      }
+    }
   }
 
   _onEnemyKill(enemy, owner) {
-    const scorer = (this.coopMode && this.player2 && owner === 'p2') ? this.player2 : this.player;
+    const isP2 = (this.coopMode || this.localCoop) && this.player2 && owner === 'p2';
+    const scorer = isP2 ? this.player2 : this.player;
     scorer.kills++;
     scorer.addCombo();
     const mult = scorer.getComboMultiplier();
@@ -712,7 +762,7 @@ class Game {
 
   _onBossKill(owner) {
     if (!this.boss) return;
-    const scorer = (this.coopMode && this.player2 && owner === 'p2') ? this.player2 : this.player;
+    const scorer = ((this.coopMode || this.localCoop) && this.player2 && owner === 'p2') ? this.player2 : this.player;
     const pts = this.boss.points;
     scorer.score += pts;
     scorer.kills++;
@@ -795,7 +845,7 @@ class Game {
 
   _goTally() {
     // Merge P2 stats
-    if (this.coopMode && this.player2) {
+    if ((this.coopMode || this.localCoop) && this.player2) {
       this.player.score += this.player2.score;
       this.player.kills += this.player2.kills || 0;
       this.player.itemsCollected += this.player2.itemsCollected || 0;
@@ -815,11 +865,16 @@ class Game {
     }
 
     // cleanup visual ทันที — player2=null ป้องกัน HUD ค้าง
-    // แต่ coopMode ยังเป็น true เพื่อให้ _updateCoop ส่ง payload ต่อได้
+    // cleanup visual ทันที
     this._tallyPending = true;
     this._waitingForTally = false;
     this.player2 = null;
     this.player.coopActive = false;
+    // localCoop cleanup ทันที (ไม่ต้องรอ network)
+    if (this.localCoop) {
+      this.localCoop = false;
+      this.input2 = { left:false, right:false, btnA:false, btnB:false };
+    }
 
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses);
     this.state = STATE.TALLY;
@@ -939,18 +994,25 @@ class Game {
 
     // Solo play button
     ctx.fillStyle = COL.PRIMARY;
-    _rr(ctx, WIDTH/2-120, 478, 240, 42, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 478, 240, 42, 14); ctx.stroke();
+    _rr(ctx, WIDTH/2-120, 472, 240, 40, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 472, 240, 40, 14); ctx.stroke();
     ctx.font = '15px '+FONT.MAIN; ctx.fillStyle = COL.HUD_TEXT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 499);
+    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 492);
 
-    // Co-op button
-    ctx.fillStyle = COL.SKY_BLUE;
-    _rr(ctx, WIDTH/2-120, 530, 240, 42, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 530, 240, 42, 14); ctx.stroke();
+    // Local Co-op button
+    ctx.fillStyle = COL.MINT;
+    _rr(ctx, WIDTH/2-120, 520, 240, 40, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 520, 240, 40, 14); ctx.stroke();
     ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 551);
+    ctx.fillText('🎮🎮 2 คน (เครื่องเดียว)', WIDTH/2, 540);
+
+    // Online Co-op button
+    ctx.fillStyle = COL.SKY_BLUE;
+    _rr(ctx, WIDTH/2-120, 568, 240, 40, 14); ctx.fill();
+    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 568, 240, 40, 14); ctx.stroke();
+    ctx.fillStyle = COL.HUD_TEXT;
+    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 588);
 
     ctx.font = '24px '+FONT.BODY; ctx.textAlign = 'center';
     ctx.fillText('⭐', 50, 120+Math.sin(this.introTimer*1.5)*10);
@@ -969,7 +1031,7 @@ class Game {
     this.player.draw(ctx, this.images);
     if (this.player2) this.player2.draw(ctx, this.images);
     this.hud.sessionMs = this._sessionMs;
-    this.hud.draw(ctx, this.player, this.currentStage, this.stageTimer, this.coopMode ? this.player2 : null);
+    this.hud.draw(ctx, this.player, this.currentStage, this.stageTimer, (this.coopMode || this.localCoop) ? this.player2 : null);
     this._drawJoypad(ctx);
   }
 
@@ -1097,15 +1159,24 @@ class Game {
       return;
     }
 
-    if (['a','d','b',' ','arrowleft','arrowright'].includes(kl)) e.preventDefault();
+    if (['a','d','r','t','arrowleft','arrowright','o','p'].includes(kl)) e.preventDefault();
 
-    if (kl === 'a' || kl === 'arrowleft') this.input.left = down;
-    if (kl === 'd' || kl === 'arrowright') this.input.right = down;
-    if (kl === 'b') this.input.btnB = down;
-    if (kl === ' ') this.input.btnA = down;
+    // P1 keys: A=ซ้าย, D=ขวา, R=ยิง, T=กระโดด
+    if (kl === 'a') this.input.left  = down;
+    if (kl === 'd') this.input.right = down;
+    if (kl === 'r') this.input.btnB  = down;
+    if (kl === 't') this.input.btnA  = down;
+
+    // P2 Local keys (localCoop only): ←=ซ้าย, →=ขวา, O=ยิง, P=กระโดด
+    if (this.localCoop && this.player2) {
+      if (kl === 'arrowleft')  this.input2.left  = down;
+      if (kl === 'arrowright') this.input2.right = down;
+      if (kl === 'o')          this.input2.btnB  = down;
+      if (kl === 'p')          this.input2.btnA  = down;
+    }
 
     if (down && this._inputLock <= 0) {
-      if (kl === ' ' || kl === 'enter') this._handleConfirm();
+      if (kl === 't' || kl === 'enter') this._handleConfirm();
     }
   }
 
@@ -1123,10 +1194,12 @@ class Game {
       if (pos.x >= dx0+dw+dg && pos.x <= dx0+dw*2+dg) { this.difficulty = DIFFICULTY.MEDIUM; return true; }
       if (pos.x >= dx0+dw*2+dg*2 && pos.x <= dx0+dw*3+dg*2) { this.difficulty = DIFFICULTY.HARD; return true; }
     }
-    // Solo button: y 478-520
-    if (pos.y >= 478 && pos.y <= 520) { this._startGame(); return true; }
-    // Co-op button: y 530-572
-    if (pos.y >= 530 && pos.y <= 572) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
+    // Solo button: y 472-512
+    if (pos.y >= 472 && pos.y <= 512) { this._startGame(); return true; }
+    // Local Co-op button: y 520-560
+    if (pos.y >= 520 && pos.y <= 560) { this._startLocalCoop(); return true; }
+    // Online Co-op button: y 568-608
+    if (pos.y >= 568 && pos.y <= 608) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
     return false;
   }
 
@@ -1254,6 +1327,40 @@ class Game {
     this._startStage(1);
   }
 
+  _startLocalCoop() {
+    this.coopMode = false;    // ไม่ใช้ network
+    this.localCoop = true;
+    this.net.disconnect();
+
+    const chp = this.difficulty.coopHp;
+
+    this.player.reset();
+    this.player.maxHp = chp; this.player.hp = chp;
+    this.player.coopActive = true;
+    this.player.isP2 = false;
+
+    this.player2 = new Player();
+    this.player2.reset();
+    this.player2.maxHp = chp; this.player2.hp = chp;
+    this.player2.isP2 = true;
+    this.player2.coopActive = true;
+    this.player2.x = WIDTH - PLAYER_W - 30;
+
+    this.boss = null;
+    this.currentStage = 1; this.currentWave = 0;
+    this.stagesCleared = 0; this.timeBonuses = [];
+    this.particles = [];
+    this._stageClearing = false;
+
+    this.input  = { left:false, right:false, btnA:false, btnB:false };
+    this.input2 = { left:false, right:false, btnA:false, btnB:false };
+    this._prevBtnA = false;
+    this._prevBtnA2 = false;
+
+    this._startStage(1);
+    this.state = STATE.PLAYING;
+  }
+
   _submitName(name) {
     this.rankingScreen.addScore(name, this.player.score);
     this.state = STATE.RANKING;
@@ -1262,12 +1369,14 @@ class Game {
 
   _restartGame() {
     this.coopMode = false;
+    this.localCoop = false;
     this.player2 = null;
     this.player.coopActive = false;
     this._tallyPending = false;
     this._tallyPayload = null;
     this._waitingForTally = false;
     this._coopHpOverride = null;
+    this.input2 = { left:false, right:false, btnA:false, btnB:false };
     this.net.disconnect();
 
     this.state = STATE.INTRO;
