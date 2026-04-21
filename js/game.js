@@ -479,6 +479,19 @@ class Game {
       if (this.net.peerState) this._lastHostStateTime = Date.now();
       if (!this._lastHostStateTime) this._lastHostStateTime = Date.now();
       if (Date.now() - this._lastHostStateTime > 5000) {
+        // ถ้ากำลังรอ TALLY → แสดง tally ด้วยข้อมูลที่มี แทนที่จะ solo switch
+        if (this._waitingForTally) {
+          this._waitingForTally = false;
+          this.tally.init(this.player, this.stagesCleared, this.timeBonuses || []);
+          this.state = STATE.TALLY;
+          this._inputLock = 800;
+          this.coopMode = false;
+          this.player2 = null;
+          this.player.coopActive = false;
+          this.net.disconnect();
+          this._lastHostStateTime = 0;
+          return;
+        }
         this.hud.addNotification('⚠️ Host ไม่ตอบ — เล่นต่อคนเดียว');
         this.coopMode = false;
         if (this.player2 && this.player2.hp > 0) {
