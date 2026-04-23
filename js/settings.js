@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════
 const WIDTH=390, HEIGHT=720;
 
-const STATE={LOADING:'LOADING',INTRO:'INTRO',PLAYING:'PLAYING',STAGE_CLEAR:'STAGE_CLEAR',GAME_OVER:'GAME_OVER',TALLY:'TALLY',NAME:'NAME',RANKING:'RANKING',BREAK:'BREAK'};
+const STATE={LOADING:'LOADING',INTRO:'INTRO',PLAYING:'PLAYING',STAGE_CLEAR:'STAGE_CLEAR',GAME_OVER:'GAME_OVER',TALLY:'TALLY',NAME:'NAME',RANKING:'RANKING',BREAK:'BREAK',SELECT:'SELECT'};
 
 // ── Yellow Pastel Palette ────────────────────────────
 const COL={
@@ -139,7 +139,9 @@ const RANKING_KEY='tinyGuardian_ranking_v1', RANKING_MAX=10;
 // ── Asset Paths (match actual filenames) ─────────────
 const ASSET_IMAGES={
   player:       'assets/images/player.png',
-  player2:      'assets/images/player2.png',     // P2 image (optional, fallback to player+tint)
+  player2:      'assets/images/player2.png',
+  player3:      'assets/images/player3.png',
+  player4:      'assets/images/player4.png',
   background:   'assets/images/background.png',      // shared BG
   bg_stage1:    'assets/images/bg_stage1.png',        // optional per-stage BG
   bg_stage2:    'assets/images/bg_stage2.png',

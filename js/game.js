@@ -3,6 +3,233 @@
 //  Main loop, state machine, input, audio, joypad
 // ═══════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════
+//  CharSelectScreen — เลือกตัวละครก่อนเริ่มเกม
+// ═══════════════════════════════════════════════════
+class CharSelectScreen {
+  constructor() {
+    this.reset();
+  }
+
+  // playerCount=1 (solo) หรือ 2 (coop)
+  // onDone(p1Key, p2Key) — callback เมื่อเลือกครบ
+  init(playerCount, onDone) {
+    this.playerCount = playerCount;
+    this.onDone = onDone;
+    this.chars = ['player','player2','player3','player4'];
+    this.labels = ['🟡 P1','🔵 P2','🟢 P3','🔴 P4'];
+    this.colors = [COL.PRIMARY, COL.SKY_BLUE, COL.MINT, COL.SOFT_RED];
+    // cursor[0]=P1 cursor, cursor[1]=P2 cursor
+    this.cursor = [0, 1];
+    this.chosen = [null, null]; // null = ยังไม่เลือก
+    this.currentPlayer = 0;    // 0=P1 กำลังเลือก, 1=P2 กำลังเลือก
+    this._flash = 0;
+  }
+
+  reset() {
+    this.playerCount = 1;
+    this.onDone = null;
+    this.chars = ['player','player2','player3','player4'];
+    this.cursor = [0, 1];
+    this.chosen = [null, null];
+    this.currentPlayer = 0;
+    this._flash = 0;
+  }
+
+  // input: { left, right, btnA } ของ player ที่กำลังเลือก
+  handleInput(input, prevBtnA) {
+    const p = this.currentPlayer;
+    const justA = input.btnA && !prevBtnA;
+    const justLeft  = input.left;
+    const justRight = input.right;
+
+    // เลื่อน cursor
+    if (justLeft)  this._moveCursor(p, -1);
+    if (justRight) this._moveCursor(p, 1);
+
+    // กด A = ยืนยัน
+    if (justA) {
+      const key = this.chars[this.cursor[p]];
+      this.chosen[p] = key;
+
+      if (this.playerCount === 1 || this.currentPlayer === 1) {
+        // เลือกครบ
+        this.onDone && this.onDone(this.chosen[0], this.chosen[1]);
+      } else {
+        // ไปให้ P2 เลือก
+        this.currentPlayer = 1;
+        // cursor P2 เริ่มที่ slot ที่ไม่ซ้ำกับ P1
+        this.cursor[1] = (this.cursor[0] + 1) % this.chars.length;
+      }
+    }
+  }
+
+  _moveCursor(p, dir) {
+    const len = this.chars.length;
+    let next = (this.cursor[p] + dir + len) % len;
+    // ข้าม slot ที่อีก player เลือกไปแล้ว
+    const otherChosen = p === 0 ? this.chosen[1] : this.chosen[0];
+    let tries = 0;
+    while (tries < len && this.chars[next] === otherChosen) {
+      next = (next + dir + len) % len;
+      tries++;
+    }
+    this.cursor[p] = next;
+  }
+
+  update(dt) {
+    this._flash += dt;
+  }
+
+  draw(ctx, images) {
+    // BG
+    const grad = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+    grad.addColorStop(0, '#FFF8E1'); grad.addColorStop(1, '#FFE082');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+    // Title
+    ctx.font = 'bold 22px ' + FONT.MAIN;
+    ctx.fillStyle = COL.HUD_TEXT;
+    ctx.fillText('เลือกตัวละคร', WIDTH/2, 52);
+
+    // แสดงว่า Player ไหนกำลังเลือก
+    const pLabel = this.currentPlayer === 0 ? '🟡 Player 1 กรุณาเลือก' : '🔵 Player 2 กรุณาเลือก';
+    ctx.font = '14px ' + FONT.BODY;
+    ctx.fillStyle = this.colors[this.currentPlayer];
+    ctx.fillText(pLabel, WIDTH/2, 82);
+
+    // วาด 4 ตัวเลือก
+    const cardW = 72, cardH = 90, gap = 14;
+    const totalW = cardW * 4 + gap * 3;
+    const startX = (WIDTH - totalW) / 2;
+    const cardY = 120;
+
+    for (let i = 0; i < 4; i++) {
+      const key = this.chars[i];
+      const cx = startX + i * (cardW + gap);
+      const isChosen0 = this.chosen[0] === key;
+      const isChosen1 = this.chosen[1] === key;
+      const isCurP = this.cursor[this.currentPlayer] === i;
+      const isOtherCur = this.playerCount > 1 && this.cursor[1 - this.currentPlayer] === i && this.chosen[1 - this.currentPlayer] === null;
+      const isTaken = (isChosen0 && this.currentPlayer === 1) || (isChosen1 && this.currentPlayer === 0);
+
+      // Card BG
+      ctx.fillStyle = isTaken ? 'rgba(200,200,200,0.5)' :
+                      isChosen0 || isChosen1 ? 'rgba(255,213,79,0.5)' :
+                      isCurP ? 'rgba(255,236,179,0.95)' : 'rgba(255,248,225,0.7)';
+      _rr(ctx, cx, cardY, cardW, cardH, 12); ctx.fill();
+
+      // Border
+      ctx.strokeStyle = isCurP ? (this.currentPlayer === 0 ? COL.PRIMARY_D : COL.SKY_BLUE) :
+                        isChosen0 ? COL.PRIMARY_D :
+                        isChosen1 ? '#1E88E5' : 'rgba(255,213,79,0.5)';
+      ctx.lineWidth = isCurP ? 3 : 1.5;
+      _rr(ctx, cx, cardY, cardW, cardH, 12); ctx.stroke();
+
+      // รูปตัวละคร
+      const img = images && images[key];
+      if (img) {
+        ctx.save();
+        if (isTaken) ctx.globalAlpha = 0.3;
+        const aspect = img.width / img.height;
+        const dw = cardW - 12, dh = cardH - 28;
+        const srcW = aspect > 1.5 ? Math.floor(img.height * (PLAYER_W / PLAYER_H)) : img.width;
+        ctx.drawImage(img, 0, 0, srcW, img.height, cx + 6, cardY + 4, dw, dh);
+        ctx.restore();
+      } else {
+        // Fallback circle
+        ctx.fillStyle = this.colors[i];
+        ctx.beginPath(); ctx.arc(cx + cardW/2, cardY + cardH/2 - 8, 24, 0, Math.PI*2); ctx.fill();
+      }
+
+      // Label ชื่อ
+      ctx.font = '11px ' + FONT.BODY;
+      ctx.fillStyle = isTaken ? '#999' : COL.HUD_TEXT;
+      ctx.fillText('ตัวที่ ' + (i+1), cx + cardW/2, cardY + cardH - 10);
+
+      // แสดงว่า P1/P2 เลือกไปแล้ว
+      if (isChosen0) {
+        ctx.font = 'bold 10px ' + FONT.BODY;
+        ctx.fillStyle = COL.PRIMARY_D;
+        ctx.fillText('P1 ✓', cx + cardW/2, cardY - 12);
+      }
+      if (isChosen1 && this.playerCount > 1) {
+        ctx.font = 'bold 10px ' + FONT.BODY;
+        ctx.fillStyle = '#1E88E5';
+        ctx.fillText('P2 ✓', cx + cardW/2, cardY - 12);
+      }
+
+      // Cursor blink arrow
+      if (isCurP && Math.floor(this._flash * 3) % 2 === 0) {
+        ctx.font = '18px ' + FONT.BODY;
+        ctx.fillStyle = this.currentPlayer === 0 ? COL.PRIMARY_D : '#1E88E5';
+        ctx.fillText('▼', cx + cardW/2, cardY - 20);
+      }
+    }
+
+    // Instructions
+    const instrY = cardY + cardH + 30;
+    ctx.font = '13px ' + FONT.BODY;
+    ctx.fillStyle = COL.HUD_TEXT;
+    ctx.fillText('◀ ▶ เลือก    A ยืนยัน', WIDTH/2, instrY);
+
+    // แสดง P1 ที่เลือกแล้ว (ถ้า 2 คนและ P2 กำลังเลือก)
+    if (this.playerCount > 1 && this.currentPlayer === 1 && this.chosen[0]) {
+      ctx.font = '12px ' + FONT.BODY;
+      ctx.fillStyle = COL.PRIMARY_D;
+      ctx.fillText('P1 เลือก: ตัวที่ ' + (this.chars.indexOf(this.chosen[0]) + 1) + '  ตอนนี้ P2 กรุณาเลือก', WIDTH/2, instrY + 24);
+    }
+
+    // Virtual Joypad — แสดงเฉพาะ ◀ ▶ A
+    this._drawSelectJoypad(ctx);
+  }
+
+  _drawSelectJoypad(ctx) {
+    const jG = ctx.createLinearGradient(0, HEIGHT-JOYPAD_H, 0, HEIGHT);
+    jG.addColorStop(0, 'rgba(255,236,179,0.92)');
+    jG.addColorStop(1, 'rgba(255,224,130,0.95)');
+    ctx.fillStyle = jG;
+    ctx.fillRect(0, HEIGHT-JOYPAD_H, WIDTH, JOYPAD_H);
+    ctx.fillStyle = COL.PRIMARY;
+    ctx.fillRect(0, HEIGHT-JOYPAD_H, WIDTH, 2);
+
+    // วาดเฉพาะ LEFT, RIGHT, A
+    const keys = ['LEFT','RIGHT','A'];
+    for (const key of keys) {
+      const btn = JBTN[key];
+      const isActive = this._joyActive && this._joyActive[key];
+      const col = (key==='LEFT'||key==='RIGHT') ? COL.JOYPAD_LEFT : COL.JOYPAD_BTN_A;
+      const bx=btn.x, by=btn.y, bw=btn.w, bh=btn.h, r=12;
+
+      ctx.save();
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,0.1)';
+      ctx.beginPath();ctx.moveTo(bx+r,by+3);ctx.lineTo(bx+bw-r,by+3);ctx.quadraticCurveTo(bx+bw,by+3,bx+bw,by+r+3);ctx.lineTo(bx+bw,by+bh-r+3);ctx.quadraticCurveTo(bx+bw,by+bh+3,bx+bw-r,by+bh+3);ctx.lineTo(bx+r,by+bh+3);ctx.quadraticCurveTo(bx,by+bh+3,bx,by+bh-r+3);ctx.lineTo(bx,by+r+3);ctx.quadraticCurveTo(bx,by+3,bx+r,by+3);ctx.closePath();ctx.fill();
+      // Body
+      ctx.fillStyle = isActive ? '#FFF' : col;
+      ctx.globalAlpha = isActive ? 0.95 : 0.8;
+      ctx.beginPath();ctx.moveTo(bx+r,by);ctx.lineTo(bx+bw-r,by);ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+r);ctx.lineTo(bx+bw,by+bh-r);ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-r,by+bh);ctx.lineTo(bx+r,by+bh);ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-r);ctx.lineTo(bx,by+r);ctx.quadraticCurveTo(bx,by,bx+r,by);ctx.closePath();ctx.fill();
+      // Border
+      ctx.strokeStyle = isActive ? col : 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.globalAlpha = 1;
+      // Label
+      ctx.font = '20px '+FONT.MAIN;
+      ctx.fillStyle = isActive ? col : COL.HUD_TEXT;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(btn.label, bx+bw/2, by+bh/2-6);
+      // Hint
+      const hint = key === 'A' ? 'เลือก' : (key === 'LEFT' ? 'ซ้าย' : 'ขวา');
+      ctx.font = '9px '+FONT.BODY;
+      ctx.fillStyle = isActive ? col : 'rgba(93,64,55,0.5)';
+      ctx.fillText(hint, bx+bw/2, by+bh-8);
+      ctx.restore();
+    }
+  }
+}
+
 class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -21,6 +248,10 @@ class Game {
     this.tally = new TallyScreen();
     this.nameScreen = new NameScreen();
     this.rankingScreen = new RankingScreen();
+    this.charSelect = new CharSelectScreen();
+    this._pendingMode = null; // 'solo' | 'local' | 'online'
+    this._prevBtnA_select = false;
+    this._prevBtnA2_select = false;
 
     // Co-op
     this.coopMode = false;
@@ -144,22 +375,41 @@ class Game {
   }
 
   _startCoopGame() {
+    // Host เลือกตัวก่อนเสมอ (Guest ใช้ตัวที่ 2 ที่ Host ไม่ได้เลือก)
+    if (this.net.isHost) {
+      this.charSelect.init(1, (p1Key) => {
+        this._doStartCoopGame(p1Key);
+      });
+      this.state = STATE.SELECT;
+      this._prevBtnA_select = true;
+    } else {
+      // Guest: เลือกตัวเอง
+      this.charSelect.init(1, (p2Key) => {
+        this._doStartCoopGame(null, p2Key);
+      });
+      this.state = STATE.SELECT;
+      this._prevBtnA_select = true;
+    }
+  }
+
+  _doStartCoopGame(p1Key, p2Key) {
     this.coopMode = true;
     this._wasGuest = false;
     this._lastHostStateTime = 0;
     this._prevP2BtnA = false;
     this._prevP2BtnA_host = false;
 
-    // ใช้ค่า HP จาก Host โดยตรงถ้ามี (ป้องกัน difficulty mismatch)
     const chp = this._coopHpOverride || this.difficulty.coopHp;
     this._coopHpOverride = null;
 
     this.player.reset(); this.player.maxHp = chp; this.player.hp = chp;
+    this.player.charKey = p1Key || 'player';
     this.player.coopActive = true;
     this.player.isP2 = false;
 
     this.player2 = new Player();
     this.player2.reset(); this.player2.maxHp = chp; this.player2.hp = chp;
+    this.player2.charKey = p2Key || 'player2';
     this.player2.isP2 = true;
     this.player2.coopActive = true;
     this.player2.x = WIDTH - PLAYER_W - 30;
@@ -298,6 +548,10 @@ class Game {
         break;
       case STATE.NAME:   this.nameScreen.update(dt); break;
       case STATE.RANKING: this.rankingScreen.update(); break;
+      case STATE.SELECT:
+        this.charSelect.update(1/60);
+        this._handleSelectInput();
+        break;
     }
 
     for (const p of this.particles) {
@@ -923,6 +1177,7 @@ class Game {
       case STATE.TALLY:       this.tally.draw(ctx); break;
       case STATE.NAME:        this.nameScreen.draw(ctx); break;
       case STATE.RANKING:     this.rankingScreen.draw(ctx); break;
+      case STATE.SELECT:      this.charSelect.draw(ctx, this.images); break;
     }
     // Break overlay — วาดทับทุก state
     if (this._breakActive) this._drawBreak(ctx);
@@ -1125,7 +1380,7 @@ class Game {
     document.addEventListener('keydown', e => this._onKey(e, true), {passive:false});
     document.addEventListener('keyup', e => this._onKey(e, false), {passive:false});
     this.canvas.addEventListener('touchstart', e => this._onTouch(e), {passive:false});
-    this.canvas.addEventListener('touchmove', e => { e.preventDefault(); if(this.state===STATE.PLAYING) this._recomputeTouchInput(e.touches); }, {passive:false});
+    this.canvas.addEventListener('touchmove', e => { e.preventDefault(); if(this.state===STATE.PLAYING) this._recomputeTouchInput(e.touches); if(this.state===STATE.SELECT) this._recomputeSelectTouch(e.touches); }, {passive:false});
     this.canvas.addEventListener('touchend', e => this._onTouchEnd(e), {passive:false});
     this.canvas.addEventListener('touchcancel', e => this._onTouchEnd(e), {passive:false});
     this.canvas.addEventListener('mousedown', e => this._onMouse(e, true));
@@ -1178,6 +1433,40 @@ class Game {
     if (down && this._inputLock <= 0) {
       if (kl === 't' || kl === 'enter') this._handleConfirm();
     }
+  }
+
+  _handleSelectInput() {
+    const mode = this._pendingMode;
+    const p = this.charSelect.currentPlayer;
+
+    // P1 input (keyboard: a/d/t หรือ touch joypad)
+    const p1Input = {
+      left:  this.input.left,
+      right: this.input.right,
+      btnA:  this.input.btnA,
+    };
+    // P2 input (local: ←/→/p หรือ online: ไม่มี P2 เลือกบนหน้านี้)
+    const p2Input = {
+      left:  this.input2.left,
+      right: this.input2.right,
+      btnA:  this.input2.btnA,
+    };
+
+    const curInput = (p === 0) ? p1Input : p2Input;
+    const prevA    = (p === 0) ? this._prevBtnA_select : this._prevBtnA2_select;
+
+    // left/right: กด-แล้ว-ปล่อย เพื่อไม่ให้เลื่อนเร็วเกินไป
+    if (!this._selectMoveTimer) this._selectMoveTimer = 0;
+    this._selectMoveTimer -= 1;
+    const canMove = this._selectMoveTimer <= 0;
+    const moveInput = { ...curInput, left: canMove && curInput.left, right: canMove && curInput.right };
+    if (curInput.left || curInput.right) { if (canMove) this._selectMoveTimer = 10; }
+
+    this.charSelect.handleInput(moveInput, prevA);
+
+    // อัพเดต prev
+    if (p === 0) this._prevBtnA_select  = p1Input.btnA;
+    else         this._prevBtnA2_select = p2Input.btnA;
   }
 
   _handleConfirm() {
@@ -1257,12 +1546,40 @@ class Game {
     if (this.state === STATE.PLAYING) {
       this._recomputeTouchInput(e.touches);
     }
+    // SELECT state: route joypad touches
+    if (this.state === STATE.SELECT) {
+      this._recomputeSelectTouch(e.touches);
+    }
   }
 
   _onTouchEnd(e) {
     e.preventDefault();
     for (const t of e.changedTouches) delete this._touches[t.identifier];
     this._recomputeTouchInput(e.touches);
+    if (this.state === STATE.SELECT) this._recomputeSelectTouch(e.touches);
+  }
+
+  _recomputeSelectTouch(touchList) {
+    // reset
+    this.input.left = false; this.input.right = false; this.input.btnA = false;
+    for (const touch of touchList) {
+      const pos = this._getCanvasPos(touch.clientX, touch.clientY);
+      const pad = 8;
+      for (const key of ['LEFT','RIGHT','A']) {
+        const btn = JBTN[key];
+        if (pos.x >= btn.x-pad && pos.x <= btn.x+btn.w+pad &&
+            pos.y >= btn.y-pad && pos.y <= btn.y+btn.h+pad) {
+          if (key==='LEFT')  this.input.left  = true;
+          if (key==='RIGHT') this.input.right = true;
+          if (key==='A')     this.input.btnA  = true;
+        }
+      }
+    }
+    // อัพเดต joyActive สำหรับ highlight ปุ่ม
+    if (!this.charSelect._joyActive) this.charSelect._joyActive = {};
+    this.charSelect._joyActive['LEFT']  = this.input.left;
+    this.charSelect._joyActive['RIGHT'] = this.input.right;
+    this.charSelect._joyActive['A']     = this.input.btnA;
   }
 
   _recomputeTouchInput(touchList) {
@@ -1309,11 +1626,21 @@ class Game {
 
   // ── State Transitions ──────────────────────────────
   _startGame() {
+    this._pendingMode = 'solo';
+    this.charSelect.init(1, (p1Key) => {
+      this._doStartGame(p1Key);
+    });
+    this.state = STATE.SELECT;
+    this._prevBtnA_select = true; // ป้องกัน A ค้างจากตอนกดปุ่มเริ่ม
+  }
+
+  _doStartGame(p1Key) {
     this.coopMode = false;
     this.player2 = null;
     this.net.disconnect();
 
     this.player.reset();
+    this.player.charKey = p1Key || 'player';
     this.player.maxHp = this.difficulty.playerHp;
     this.player.hp = this.difficulty.playerHp;
     this.player.coopActive = false;
@@ -1328,19 +1655,31 @@ class Game {
   }
 
   _startLocalCoop() {
-    this.coopMode = false;    // ไม่ใช้ network
+    this._pendingMode = 'local';
+    this.charSelect.init(2, (p1Key, p2Key) => {
+      this._doStartLocalCoop(p1Key, p2Key);
+    });
+    this.state = STATE.SELECT;
+    this._prevBtnA_select = true;
+    this._prevBtnA2_select = true;
+  }
+
+  _doStartLocalCoop(p1Key, p2Key) {
+    this.coopMode = false;
     this.localCoop = true;
     this.net.disconnect();
 
     const chp = this.difficulty.coopHp;
 
     this.player.reset();
+    this.player.charKey = p1Key || 'player';
     this.player.maxHp = chp; this.player.hp = chp;
     this.player.coopActive = true;
     this.player.isP2 = false;
 
     this.player2 = new Player();
     this.player2.reset();
+    this.player2.charKey = p2Key || 'player2';
     this.player2.maxHp = chp; this.player2.hp = chp;
     this.player2.isP2 = true;
     this.player2.coopActive = true;

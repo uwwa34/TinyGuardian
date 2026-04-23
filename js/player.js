@@ -19,6 +19,7 @@ class Player {
     this.maxHp = PLAYER_HP;
     this.grounded = true;
     this.isP2 = false;   // set true for Player 2
+    this.charKey = null; // 'player' | 'player2' | 'player3' | 'player4'
     this.coopActive = false; // set true in co-op mode
     this.onPlatform = null;
     this.facing = 1; // 1=right, -1=left
@@ -346,8 +347,8 @@ class Player {
       ctx.translate(-dw / 2, -dh);
     }
 
-    // Choose image: P2 uses player2.png if available
-    const imgKey = this.isP2 ? 'player2' : 'player';
+    // Choose image: use charKey if set, else fallback to isP2 default
+    const imgKey = this.charKey || (this.isP2 ? 'player2' : 'player');
     const img = images && (images[imgKey] || images.player);
 
     if (img) {
@@ -358,8 +359,8 @@ class Player {
       } else {
         ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, dw, dh);
       }
-      // P2 blue tint (only when using shared player.png, not player2.png)
-      if (this.isP2 && !(images && images.player2)) {
+      // P2 blue tint only when no specific charKey and no player2.png
+      if (this.isP2 && !this.charKey && !(images && images.player2)) {
         ctx.globalAlpha = 0.35;
         ctx.globalCompositeOperation = 'source-atop';
         ctx.fillStyle = '#42A5F5';
