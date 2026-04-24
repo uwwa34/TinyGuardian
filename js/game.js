@@ -20,11 +20,11 @@ class CharSelectScreen {
     this.chars = ['player','player2','player3','player4'];
     this.labels = ['🟡 P1','🔵 P2','🟢 P3','🔴 P4'];
     this.colors = [COL.PRIMARY, COL.SKY_BLUE, COL.MINT, COL.SOFT_RED];
-    // cursor[0]=P1 cursor, cursor[1]=P2 cursor
     this.cursor = [0, 1];
-    this.chosen = [null, null]; // null = ยังไม่เลือก
-    this.currentPlayer = 0;    // 0=P1 กำลังเลือก, 1=P2 กำลังเลือก
+    this.chosen = [null, null];
+    this.currentPlayer = 0;
     this._flash = 0;
+    this._takenByOther = null; // online: char ที่ opponent เลือกแล้ว
   }
 
   reset() {
@@ -35,6 +35,7 @@ class CharSelectScreen {
     this.chosen = [null, null];
     this.currentPlayer = 0;
     this._flash = 0;
+    this._takenByOther = null;
   }
 
   // input: { left, right, btnA } — ทุก field เป็น edge-detected (justPressed) แล้ว
@@ -60,10 +61,13 @@ class CharSelectScreen {
   _moveCursor(p, dir) {
     const len = this.chars.length;
     let next = (this.cursor[p] + dir + len) % len;
-    // ข้าม slot ที่อีก player เลือกไปแล้ว
+    // ข้าม slot ที่อีก player เลือกไปแล้ว หรือที่ถูกล็อกโดย online opponent
     const otherChosen = p === 0 ? this.chosen[1] : this.chosen[0];
     let tries = 0;
-    while (tries < len && this.chars[next] === otherChosen) {
+    while (tries < len) {
+      const isTakenByChosen = this.chars[next] === otherChosen;
+      const isTakenByOther  = this._takenByOther && this.chars[next] === this._takenByOther;
+      if (!isTakenByChosen && !isTakenByOther) break;
       next = (next + dir + len) % len;
       tries++;
     }
@@ -105,8 +109,8 @@ class CharSelectScreen {
       const isChosen0 = this.chosen[0] === key;
       const isChosen1 = this.chosen[1] === key;
       const isCurP = this.cursor[this.currentPlayer] === i;
-      const isOtherCur = this.playerCount > 1 && this.cursor[1 - this.currentPlayer] === i && this.chosen[1 - this.currentPlayer] === null;
-      const isTaken = (isChosen0 && this.currentPlayer === 1) || (isChosen1 && this.currentPlayer === 0);
+      const isTakenByOther = this._takenByOther === key;
+      const isTaken = (isChosen0 && this.currentPlayer === 1) || (isChosen1 && this.currentPlayer === 0) || isTakenByOther;
 
       // Card BG
       ctx.fillStyle = isTaken ? 'rgba(200,200,200,0.5)' :
@@ -152,6 +156,11 @@ class CharSelectScreen {
         ctx.font = 'bold 10px ' + FONT.BODY;
         ctx.fillStyle = '#1E88E5';
         ctx.fillText('P2 ✓', cx + cardW/2, cardY - 12);
+      }
+      if (isTakenByOther) {
+        ctx.font = 'bold 10px ' + FONT.BODY;
+        ctx.fillStyle = '#E53935';
+        ctx.fillText('ถูกใช้', cx + cardW/2, cardY - 12);
       }
 
       // Cursor blink arrow
@@ -263,6 +272,9 @@ class Game {
     this.charSelect = new CharSelectScreen();
     this._pendingMode = null; // 'solo' | 'local' | 'online'
     this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
+    this._myCharKey = null;     // charKey ของ player เราเอง
+    this._hostCharKey = null;   // charKey ที่ Host เลือก (รับผ่าน p1_char event)
+    this._guestCharKey = null;  // charKey ที่ Guest เลือก (รับผ่าน p2_char event)
 
     // Co-op
     this.coopMode = false;
@@ -386,19 +398,26 @@ class Game {
   }
 
   _startCoopGame() {
-    // Host เลือกตัวก่อนเสมอ (Guest ใช้ตัวที่ 2 ที่ Host ไม่ได้เลือก)
     if (this.net.isHost) {
       this.charSelect.init(1, (p1Key) => {
-        this._doStartCoopGame(p1Key);
+        this._myCharKey = p1Key || 'player';
+        // ส่ง p1Key ให้ Guest ล่วงหน้า เพื่อให้ Guest ล็อก slot นั้น
+        this.net.sendEvent('p1_char', { key: this._myCharKey });
+        this._doStartCoopGame(p1Key, this._guestCharKey || null);
       }, 'online');
       this.state = STATE.SELECT;
       this._inputLock = 300;
       this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
     } else {
-      // Guest: เลือกตัวเอง
+      // Guest: ถ้าได้รับ p1Key จาก Host แล้ว → ล็อก slot นั้น
       this.charSelect.init(1, (p2Key) => {
-        this._doStartCoopGame(null, p2Key);
+        this._myCharKey = p2Key || 'player2';
+        this.net.sendEvent('p2_char', { key: this._myCharKey });
+        this._doStartCoopGame(this._hostCharKey || null, p2Key);
       }, 'online');
+      if (this._hostCharKey) {
+        this.charSelect._takenByOther = this._hostCharKey;
+      }
       this.state = STATE.SELECT;
       this._inputLock = 300;
       this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
@@ -443,10 +462,27 @@ class Game {
     if (data.event === 'set_difficulty' && data.diff && DIFFICULTY[data.diff]) {
       this.difficulty = DIFFICULTY[data.diff];
     }
-    // set_coop_start: Host ส่ง diff+chp ผ่าน event channel ก่อน start message เสมอ
     if (data.event === 'set_coop_start') {
       if (data.diff && DIFFICULTY[data.diff]) this.difficulty = DIFFICULTY[data.diff];
       if (data.chp) this._coopHpOverride = data.chp;
+    }
+    // Host ส่ง p1Key → Guest รับและล็อก slot นั้น
+    if (data.event === 'p1_char') {
+      this._hostCharKey = data.key;
+      // ถ้ากำลังอยู่ใน SELECT screen → update _takenByOther ทันที
+      if (this.state === STATE.SELECT) {
+        this.charSelect._takenByOther = data.key;
+        // ถ้า cursor ชนกัน → เลื่อน
+        if (this.charSelect.chars[this.charSelect.cursor[0]] === data.key) {
+          this.charSelect._moveCursor(0, 1);
+        }
+      }
+    }
+    // Guest ส่ง p2Key → Host รับและเก็บไว้
+    if (data.event === 'p2_char') {
+      this._guestCharKey = data.key;
+      // อัพเดต charKey ของ player2 บน Host ทันที
+      if (this.player2) this.player2.charKey = data.key;
     }
   }
 
@@ -512,7 +548,7 @@ class Game {
       case 'COOP_LOBBY':   this.coopLobby.update(dt); this._stopBGM('bgm'); break;
       case STATE.PLAYING:
         this._updatePlaying(dt);
-        if (this.coopMode && this.player2) this._updateCoop(dt);
+        if (this.coopMode && (this.player2 || (this.net && this.net.isGuest))) this._updateCoop(dt);
         this._playBGM('bgm');
         break;
       case STATE.STAGE_CLEAR:
@@ -523,8 +559,7 @@ class Game {
             else this._startStage(this.currentStage);
           }
         }
-        // _updateCoop: รัน ถ้า coopMode+player2 ปกติ หรือถ้า Guest กำลังรอ TALLY
-        if ((this.coopMode && this.player2) || (this.net && this.net.isGuest && this._waitingForTally)) {
+        if (this.coopMode && (this.player2 || (this.net && this.net.isGuest))) {
           this._updateCoop(dt);
         }
         this._playBGM('bgm');
@@ -534,9 +569,7 @@ class Game {
           this.stageClearTimer -= dt;
           if (this.stageClearTimer <= 0) this._goTally();
         }
-        if ((this.coopMode && this.player2) || (this.net && this.net.isGuest && this._waitingForTally)) {
-          this._updateCoop(dt);
-        }
+        if (this.coopMode && (this.player2 || (this.net && this.net.isGuest))) { this._updateCoop(dt); }
         this._bgmFadeOut(2.0);
         break;
       case STATE.TALLY:
@@ -728,8 +761,8 @@ class Game {
 
       // Send FULL state (including bullets + items)
       this.net.sendGameState({
-        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,mhp:this.player.maxHp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0},
-        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,mhp:this.player2.maxHp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0},
+        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,mhp:this.player.maxHp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0,ck:this.player.charKey||'player'},
+        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,mhp:this.player2.maxHp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0,ck:this.player2.charKey||'player2'},
         en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
         bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer,fin:this.boss.isFinal,ph:this.boss.phase}:null,
         pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,d:b.dir,c:b.charged})),
@@ -799,8 +832,8 @@ class Game {
       if (!s) return;
 
       // ── Players ──
-      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;if(s.p1.mhp)p.maxHp=s.p1.mhp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime||0;}
-      if(s.p2&&this.player2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;if(s.p2.mhp)p.maxHp=s.p2.mhp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime||0;}
+      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;if(s.p1.mhp)p.maxHp=s.p1.mhp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime||0;if(s.p1.ck)p.charKey=s.p1.ck;}
+      if(s.p2&&this.player2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;if(s.p2.mhp)p.maxHp=s.p2.mhp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime||0;if(s.p2.ck)p.charKey=s.p2.ck;}
 
       // ── Enemies ──
       if(s.en){
@@ -1724,6 +1757,9 @@ class Game {
     this._tallyPayload = null;
     this._waitingForTally = false;
     this._coopHpOverride = null;
+    this._myCharKey = null;
+    this._hostCharKey = null;
+    this._guestCharKey = null;
     this.input2 = { left:false, right:false, btnA:false, btnB:false };
     this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
     this.net.disconnect();
