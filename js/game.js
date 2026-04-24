@@ -13,8 +13,9 @@ class CharSelectScreen {
 
   // playerCount=1 (solo) หรือ 2 (coop)
   // onDone(p1Key, p2Key) — callback เมื่อเลือกครบ
-  init(playerCount, onDone) {
+  init(playerCount, onDone, mode) {
     this.playerCount = playerCount;
+    this._mode = mode || 'solo';
     this.onDone = onDone;
     this.chars = ['player','player2','player3','player4'];
     this.labels = ['🟡 P1','🔵 P2','🟢 P3','🔴 P4'];
@@ -36,29 +37,21 @@ class CharSelectScreen {
     this._flash = 0;
   }
 
-  // input: { left, right, btnA } ของ player ที่กำลังเลือก
-  handleInput(input, prevBtnA) {
+  // input: { left, right, btnA } — ทุก field เป็น edge-detected (justPressed) แล้ว
+  handleInput(input) {
     const p = this.currentPlayer;
-    const justA = input.btnA && !prevBtnA;
-    const justLeft  = input.left;
-    const justRight = input.right;
 
-    // เลื่อน cursor
-    if (justLeft)  this._moveCursor(p, -1);
-    if (justRight) this._moveCursor(p, 1);
+    if (input.left)  this._moveCursor(p, -1);
+    if (input.right) this._moveCursor(p,  1);
 
-    // กด A = ยืนยัน
-    if (justA) {
+    if (input.btnA) {
       const key = this.chars[this.cursor[p]];
       this.chosen[p] = key;
 
       if (this.playerCount === 1 || this.currentPlayer === 1) {
-        // เลือกครบ
         this.onDone && this.onDone(this.chosen[0], this.chosen[1]);
       } else {
-        // ไปให้ P2 เลือก
         this.currentPlayer = 1;
-        // cursor P2 เริ่มที่ slot ที่ไม่ซ้ำกับ P1
         this.cursor[1] = (this.cursor[0] + 1) % this.chars.length;
       }
     }
@@ -182,8 +175,27 @@ class CharSelectScreen {
       ctx.fillText('P1 เลือก: ตัวที่ ' + (this.chars.indexOf(this.chosen[0]) + 1) + '  ตอนนี้ P2 กรุณาเลือก', WIDTH/2, instrY + 24);
     }
 
-    // Virtual Joypad — แสดงเฉพาะ ◀ ▶ A
-    this._drawSelectJoypad(ctx);
+    // Virtual Joypad — P1 ใช้ joypad, P2 (local coop) ใช้ keyboard hint
+    if (this.currentPlayer === 0 || this._mode !== 'local') {
+      this._drawSelectJoypad(ctx);
+    } else {
+      // P2 กำลังเลือก — แสดง keyboard hint แทน
+      const jY = HEIGHT - JOYPAD_H;
+      const jG = ctx.createLinearGradient(0, jY, 0, HEIGHT);
+      jG.addColorStop(0, 'rgba(255,236,179,0.92)'); jG.addColorStop(1, 'rgba(255,224,130,0.95)');
+      ctx.fillStyle = jG; ctx.fillRect(0, jY, WIDTH, JOYPAD_H);
+      ctx.fillStyle = COL.PRIMARY; ctx.fillRect(0, jY, WIDTH, 2);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 14px ' + FONT.MAIN;
+      ctx.fillStyle = '#1E88E5';
+      ctx.fillText('🎹 P2 ใช้ Keyboard', WIDTH/2, jY + 30);
+      ctx.font = '13px ' + FONT.BODY;
+      ctx.fillStyle = COL.HUD_TEXT;
+      ctx.fillText('← → เลื่อน    P ยืนยัน', WIDTH/2, jY + 58);
+      ctx.font = '11px ' + FONT.BODY;
+      ctx.fillStyle = 'rgba(93,64,55,0.6)';
+      ctx.fillText('(Arrow Left / Arrow Right / P)', WIDTH/2, jY + 80);
+    }
   }
 
   _drawSelectJoypad(ctx) {
@@ -250,8 +262,7 @@ class Game {
     this.rankingScreen = new RankingScreen();
     this.charSelect = new CharSelectScreen();
     this._pendingMode = null; // 'solo' | 'local' | 'online'
-    this._prevBtnA_select = false;
-    this._prevBtnA2_select = false;
+    this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
 
     // Co-op
     this.coopMode = false;
@@ -379,16 +390,18 @@ class Game {
     if (this.net.isHost) {
       this.charSelect.init(1, (p1Key) => {
         this._doStartCoopGame(p1Key);
-      });
+      }, 'online');
       this.state = STATE.SELECT;
-      this._prevBtnA_select = true;
+      this._inputLock = 300;
+      this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
     } else {
       // Guest: เลือกตัวเอง
       this.charSelect.init(1, (p2Key) => {
         this._doStartCoopGame(null, p2Key);
-      });
+      }, 'online');
       this.state = STATE.SELECT;
-      this._prevBtnA_select = true;
+      this._inputLock = 300;
+      this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
     }
   }
 
@@ -550,7 +563,7 @@ class Game {
       case STATE.RANKING: this.rankingScreen.update(); break;
       case STATE.SELECT:
         this.charSelect.update(1/60);
-        this._handleSelectInput();
+        if (this._inputLock <= 0) this._handleSelectInput();
         break;
     }
 
@@ -1422,8 +1435,11 @@ class Game {
     if (kl === 'r') this.input.btnB  = down;
     if (kl === 't') this.input.btnA  = down;
 
-    // P2 Local keys (localCoop only): ←=ซ้าย, →=ขวา, O=ยิง, P=กระโดด
-    if (this.localCoop && this.player2) {
+    // P2 Local keys: ←=ซ้าย, →=ขวา, O=ยิง, P=กระโดด
+    // ทำงานทั้งตอนเล่น (localCoop) และตอนเลือกตัวละคร (SELECT state)
+    const isLocalP2Active = this.localCoop && this.player2;
+    const isSelectP2 = this.state === STATE.SELECT && this._pendingMode === 'local';
+    if (isLocalP2Active || isSelectP2) {
       if (kl === 'arrowleft')  this.input2.left  = down;
       if (kl === 'arrowright') this.input2.right = down;
       if (kl === 'o')          this.input2.btnB  = down;
@@ -1436,37 +1452,29 @@ class Game {
   }
 
   _handleSelectInput() {
-    const mode = this._pendingMode;
     const p = this.charSelect.currentPlayer;
 
-    // P1 input (keyboard: a/d/t หรือ touch joypad)
-    const p1Input = {
-      left:  this.input.left,
-      right: this.input.right,
-      btnA:  this.input.btnA,
+    // เลือก input object ตาม player ที่กำลังเลือก
+    const inp = (p === 0) ? this.input : this.input2;
+
+    // prev state แยกกัน P1/P2 และแยก left/right/A ด้วย
+    if (!this._selPrev) this._selPrev = {
+      p1: { left:false, right:false, btnA:false },
+      p2: { left:false, right:false, btnA:false },
     };
-    // P2 input (local: ←/→/p หรือ online: ไม่มี P2 เลือกบนหน้านี้)
-    const p2Input = {
-      left:  this.input2.left,
-      right: this.input2.right,
-      btnA:  this.input2.btnA,
-    };
+    const prev = (p === 0) ? this._selPrev.p1 : this._selPrev.p2;
 
-    const curInput = (p === 0) ? p1Input : p2Input;
-    const prevA    = (p === 0) ? this._prevBtnA_select : this._prevBtnA2_select;
-
-    // left/right: กด-แล้ว-ปล่อย เพื่อไม่ให้เลื่อนเร็วเกินไป
-    if (!this._selectMoveTimer) this._selectMoveTimer = 0;
-    this._selectMoveTimer -= 1;
-    const canMove = this._selectMoveTimer <= 0;
-    const moveInput = { ...curInput, left: canMove && curInput.left, right: canMove && curInput.right };
-    if (curInput.left || curInput.right) { if (canMove) this._selectMoveTimer = 10; }
-
-    this.charSelect.handleInput(moveInput, prevA);
+    // edge detect
+    const justLeft  = inp.left  && !prev.left;
+    const justRight = inp.right && !prev.right;
+    const justA     = inp.btnA  && !prev.btnA;
 
     // อัพเดต prev
-    if (p === 0) this._prevBtnA_select  = p1Input.btnA;
-    else         this._prevBtnA2_select = p2Input.btnA;
+    prev.left  = inp.left;
+    prev.right = inp.right;
+    prev.btnA  = inp.btnA;
+
+    this.charSelect.handleInput({ left: justLeft, right: justRight, btnA: justA });
   }
 
   _handleConfirm() {
@@ -1546,9 +1554,9 @@ class Game {
     if (this.state === STATE.PLAYING) {
       this._recomputeTouchInput(e.touches);
     }
-    // SELECT state: route joypad touches
+    // SELECT state: ใช้ changedTouches เพราะ touchstart บาง device e.touches ยัง empty
     if (this.state === STATE.SELECT) {
-      this._recomputeSelectTouch(e.touches);
+      this._recomputeSelectTouch(e.changedTouches);
     }
   }
 
@@ -1629,9 +1637,10 @@ class Game {
     this._pendingMode = 'solo';
     this.charSelect.init(1, (p1Key) => {
       this._doStartGame(p1Key);
-    });
+    }, 'solo');
     this.state = STATE.SELECT;
-    this._prevBtnA_select = true; // ป้องกัน A ค้างจากตอนกดปุ่มเริ่ม
+    this._inputLock = 300;
+    this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} }; // ป้องกัน A ค้างจากตอนกดปุ่มเริ่ม
   }
 
   _doStartGame(p1Key) {
@@ -1658,10 +1667,10 @@ class Game {
     this._pendingMode = 'local';
     this.charSelect.init(2, (p1Key, p2Key) => {
       this._doStartLocalCoop(p1Key, p2Key);
-    });
+    }, 'local');
     this.state = STATE.SELECT;
-    this._prevBtnA_select = true;
-    this._prevBtnA2_select = true;
+    this._inputLock = 300;
+    this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
   }
 
   _doStartLocalCoop(p1Key, p2Key) {
@@ -1716,6 +1725,7 @@ class Game {
     this._waitingForTally = false;
     this._coopHpOverride = null;
     this.input2 = { left:false, right:false, btnA:false, btnB:false };
+    this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
     this.net.disconnect();
 
     this.state = STATE.INTRO;
