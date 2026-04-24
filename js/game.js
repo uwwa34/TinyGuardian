@@ -702,7 +702,8 @@ class Game {
   }
 
   _updateCoop(dt) {
-    if (!this.player2) return;
+    // Guest ไม่ต้องการ player2 เพื่อรัน — Host ต้องการ player2
+    if (!this.player2 && !(this.net && this.net.isGuest)) return;
 
     if (this.net.isHost) {
       // Check if Guest disconnected
