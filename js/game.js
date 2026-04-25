@@ -769,7 +769,7 @@ class Game {
         pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,d:b.dir,c:b.charged})),
         eb:this.projManager.enemyBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y})),
         it:this.itemManager.items.filter(i=>i.alive).map(i=>({x:i.x,y:i.y,t:i.type})),
-        ti:this.stageTimer,gs:this.state,st:this.currentStage,sc:this.stagesCleared,
+        ti:this.stageTimer,gs:this.state,st:this.currentStage,sc:this.stagesCleared,tb:this.timeBonuses,
       });
 
     } else if (this.net.isGuest) {
@@ -913,21 +913,27 @@ class Game {
 
       // ── Stages cleared count from Host — apply BEFORE state transition ──
       if(s.sc!==undefined) this.stagesCleared=s.sc;
+      if(s.tb && Array.isArray(s.tb) && s.tb.length > 0) this.timeBonuses=s.tb;
 
       // ── Game state transition ──
       if(s.gs && s.gs!==this.state){
         const newState=s.gs;
         if(newState===STATE.STAGE_CLEAR){
-          this.state=STATE.STAGE_CLEAR;
-          this.stageClearTimer=2.5;
-          this.hud.addNotification('✨ Stage Clear!');
-          // ใช้ s.st โดยตรง (ไม่ใช้ this.currentStage เพราะอาจยังไม่ update)
-          if((s.st||this.currentStage) > 4) this._waitingForTally = true;
+          const stageNum = s.st || this.currentStage;
+          if(stageNum > 4) {
+            // Stage 4 จบแล้ว — Guest สร้าง Tally เองทันที ไม่รอ Host
+            this._guestSelfTally();
+          } else {
+            this.state=STATE.STAGE_CLEAR;
+            this.stageClearTimer=2.5;
+            this.hud.addNotification('✨ Stage Clear!');
+          }
         } else if(newState===STATE.GAME_OVER){
           this.state=STATE.GAME_OVER;
           this.stageClearTimer=2.5;
         } else if(newState===STATE.TALLY){
-          this._applyGuestTally(s);
+          // ถ้า Host ส่ง TALLY มาด้วย (กรณี timing ช้า) — ใช้ได้เช่นกัน
+          if(this.state !== STATE.TALLY) this._applyGuestTally(s);
         } else {
           this.state=newState;
         }
@@ -1896,7 +1902,19 @@ class Game {
     ctx.restore();
   }
 
-  // ── Guest: รับข้อมูล Tally จาก Host ──────────────────
+  // ── Guest สร้าง Tally เองทันที ไม่รอ Host ─────────────
+  _guestSelfTally() {
+    // ใช้ข้อมูล P2 (Guest's own player) ที่ track มาตลอดเกม
+    this.tally.init(this.player, this.stagesCleared, this.timeBonuses || []);
+    this.state = STATE.TALLY;
+    this._inputLock = 800;
+    this.coopMode = false;
+    this.player2 = null;
+    this.player.coopActive = false;
+    try { this.net.disconnect(); } catch(e) {}
+  }
+
+  // ── Guest รับ Tally data จาก Host (fallback) ──────────
   _applyGuestTally(s) {
     // ถ้าเข้ามาซ้ำ (packet ส่งหลายครั้ง) ให้ข้ามถ้า TALLY แสดงอยู่แล้ว
     if (this.state === STATE.TALLY && !this._waitingForTally) return;
