@@ -311,6 +311,7 @@ class Game {
     this._tallyPending = false;
     this._tallyPayload = null;
     this._waitingForTally = false;
+    this._stage4Timer = 0; // fallback: Guest ค้าง Stage 4 นานเกิน 30s → self tally
     this.localCoop = false;   // Local 2-player (same device)
     this.input2 = { left:false, right:false, btnA:false, btnB:false };
     this._prevBtnA2 = false;
@@ -796,6 +797,20 @@ class Game {
       // Track last received state — if stale > 5s, switch to solo
       if (this.net.peerState) this._lastHostStateTime = Date.now();
       if (!this._lastHostStateTime) this._lastHostStateTime = Date.now();
+
+      // Fallback: ถ้า Guest อยู่ Stage 4 นานเกิน 30s → self tally
+      if (this.coopMode && this.currentStage >= 4 &&
+          (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR)) {
+        if (!this._stage4Timer) this._stage4Timer = Date.now();
+        if (Date.now() - this._stage4Timer > 30000) {
+          this.hud.addNotification('⏱ โหลด Tally อัตโนมัติ');
+          this._guestSelfTally();
+          return;
+        }
+      } else {
+        this._stage4Timer = 0; // reset ถ้าออกจาก Stage 4
+      }
+
       if (Date.now() - this._lastHostStateTime > 5000) {
         // ถ้ากำลังรอ TALLY → แสดง tally ด้วยข้อมูลที่มี แทนที่จะ solo switch
         if (this._waitingForTally) {
@@ -1763,7 +1778,7 @@ class Game {
     this._tallyPending = false;
     this._tallyPayload = null;
     this._waitingForTally = false;
-    this._coopHpOverride = null;
+    this._stage4Timer = 0;
     this._myCharKey = null;
     this._hostCharKey = null;
     this._guestCharKey = null;
@@ -1904,7 +1919,15 @@ class Game {
 
   // ── Guest สร้าง Tally เองทันที ไม่รอ Host ─────────────
   _guestSelfTally() {
-    // ใช้ข้อมูล P2 (Guest's own player) ที่ track มาตลอดเกม
+    // บน Guest: this.player = P1 (synced จาก Host)
+    //           this.player2 = P2 ตัวจริงที่ Guest เล่นเอง
+    // ต้องใช้ player2 สำหรับ score/kills/items แล้ว copy เข้า player สำหรับ tally
+    const p2 = this.player2;
+    if (p2) {
+      this.player.score         = p2.score         || 0;
+      this.player.kills         = p2.kills          || 0;
+      this.player.itemsCollected= p2.itemsCollected || 0;
+    }
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses || []);
     this.state = STATE.TALLY;
     this._inputLock = 800;
