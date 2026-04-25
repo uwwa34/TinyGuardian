@@ -763,8 +763,8 @@ class Game {
 
       // Send FULL state (including bullets + items)
       this.net.sendGameState({
-        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,mhp:this.player.maxHp,facing:this.player.facing,state:this.player.state,score:this.player.score,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0,ck:this.player.charKey||'player'},
-        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,mhp:this.player2.maxHp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0,ck:this.player2.charKey||'player2'},
+        p1:{x:this.player.x,y:this.player.y,hp:this.player.hp,mhp:this.player.maxHp,facing:this.player.facing,state:this.player.state,score:this.player.score,kills:this.player.kills||0,items:this.player.itemsCollected||0,grounded:this.player.grounded,invincible:this.player.invincible,animFrame:this.player.animFrame,charging:this.player.charging,chargeTime:this.player.chargeTime||0,ck:this.player.charKey||'player'},
+        p2:{x:this.player2.x,y:this.player2.y,hp:this.player2.hp,mhp:this.player2.maxHp,facing:this.player2.facing,state:this.player2.state,score:this.player2.score,kills:this.player2.kills||0,items:this.player2.itemsCollected||0,grounded:this.player2.grounded,invincible:this.player2.invincible,animFrame:this.player2.animFrame,charging:this.player2.charging,chargeTime:this.player2.chargeTime||0,ck:this.player2.charKey||'player2'},
         en:this.enemyManager.enemies.map(e=>({x:e.x,y:e.y,t:e.type,a:e.alive,d:e.dying,g:e.angry,f:e.facing,dt:e.dieTimer})),
         bo:this.boss?{x:this.boss.x,y:this.boss.y,hp:this.boss.hp,mhp:this.boss.maxHp,a:this.boss.alive,d:this.boss.dying,f:this.boss.facing,s:this.boss.state,ag:this.boss.isAngry,fl:this.boss.flashTimer,fin:this.boss.isFinal,ph:this.boss.phase}:null,
         pb:this.projManager.playerBullets.filter(b=>b.alive).map(b=>({x:b.x,y:b.y,d:b.dir,c:b.charged})),
@@ -848,8 +848,8 @@ class Game {
       if (!s) return;
 
       // ── Players ──
-      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;if(s.p1.mhp)p.maxHp=s.p1.mhp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime||0;if(s.p1.ck)p.charKey=s.p1.ck;}
-      if(s.p2&&this.player2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;if(s.p2.mhp)p.maxHp=s.p2.mhp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime||0;if(s.p2.ck)p.charKey=s.p2.ck;}
+      if(s.p1){const p=this.player;p.x=s.p1.x;p.y=s.p1.y;p.hp=s.p1.hp;if(s.p1.mhp)p.maxHp=s.p1.mhp;p.facing=s.p1.facing;p.state=s.p1.state;p.score=s.p1.score;if(s.p1.kills!==undefined)p.kills=s.p1.kills;if(s.p1.items!==undefined)p.itemsCollected=s.p1.items;p.grounded=s.p1.grounded;p.invincible=s.p1.invincible;p.animFrame=s.p1.animFrame;p.charging=s.p1.charging;p.chargeTime=s.p1.chargeTime||0;if(s.p1.ck)p.charKey=s.p1.ck;}
+      if(s.p2&&this.player2){const p=this.player2;p.x=s.p2.x;p.y=s.p2.y;p.hp=s.p2.hp;if(s.p2.mhp)p.maxHp=s.p2.mhp;p.facing=s.p2.facing;p.state=s.p2.state;p.score=s.p2.score;if(s.p2.kills!==undefined)p.kills=s.p2.kills;if(s.p2.items!==undefined)p.itemsCollected=s.p2.items;p.grounded=s.p2.grounded;p.invincible=s.p2.invincible;p.animFrame=s.p2.animFrame;p.charging=s.p2.charging;p.chargeTime=s.p2.chargeTime||0;if(s.p2.ck)p.charKey=s.p2.ck;}
 
       // ── Enemies ──
       if(s.en){
@@ -1921,12 +1921,12 @@ class Game {
   _guestSelfTally() {
     // บน Guest: this.player = P1 (synced จาก Host)
     //           this.player2 = P2 ตัวจริงที่ Guest เล่นเอง
-    // ต้องใช้ player2 สำหรับ score/kills/items แล้ว copy เข้า player สำหรับ tally
+    // Merge P1+P2 เหมือน Host ทำใน _goTally
     const p2 = this.player2;
     if (p2) {
-      this.player.score         = p2.score         || 0;
-      this.player.kills         = p2.kills          || 0;
-      this.player.itemsCollected= p2.itemsCollected || 0;
+      this.player.score          += p2.score         || 0;
+      this.player.kills          += p2.kills          || 0;
+      this.player.itemsCollected += p2.itemsCollected || 0;
     }
     this.tally.init(this.player, this.stagesCleared, this.timeBonuses || []);
     this.state = STATE.TALLY;
