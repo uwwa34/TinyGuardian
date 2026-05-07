@@ -60,7 +60,8 @@ class CharSelectScreen {
 
   _moveCursor(p, dir) {
     const len = this.chars.length;
-    let next = (this.cursor[p] + dir + len) % len;
+    // clamp ไม่ให้วนรอบ — ตัวที่ 1 ซ้ายไม่ได้, ตัวที่ 4 ขวาไม่ได้
+    let next = Math.max(0, Math.min(len-1, this.cursor[p] + dir));
     // ข้าม slot ที่อีก player เลือกไปแล้ว หรือที่ถูกล็อกโดย online opponent
     const otherChosen = p === 0 ? this.chosen[1] : this.chosen[0];
     let tries = 0;
@@ -272,11 +273,11 @@ class Game {
     this.charSelect = new CharSelectScreen();
     this._pendingMode = null; // 'solo' | 'local' | 'online'
     this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
-    this._introStep = 0;    // 0=เลือก difficulty, 1=เลือกโหมด
-    this._introCursor = 1; // cursor ปัจจุบัน (difficulty: 0/1/2, mode: 0/1/2)
-    this._introPrevLeft = false;
+    this._introModeCursor = 0;   // 0=Solo, 1=LocalCoop, 2=Online
+    this._introStep      = 0;   // 0=เลือก difficulty, 1=เลือกโหมด
+    this._introPrevLeft  = false;
     this._introPrevRight = false;
-    this._introPrevA = false;
+    this._introPrevA     = false;
     this._myCharKey = null;     // charKey ของ player เราเอง
     this._hostCharKey = null;   // charKey ที่ Host เลือก (รับผ่าน p1_char event)
     this._guestCharKey = null;  // charKey ที่ Guest เลือก (รับผ่าน p2_char event)
@@ -307,12 +308,9 @@ class Game {
     this.introTimer = 0;
 
     // Screen Time
-    this._sessionMs = 0;          // เวลาเล่นสะสมใน session นี้ (reset ทุก eye break)
-    this._totalSessionMs = 0;     // เวลาเล่นรวมทั้งหมด (reset เมื่อพักยาว)
-    this._breakTimer = 0;
+    this._sessionMs = 0;          // เวลาเล่นสะสมใน session นี้
+    this._breakTimer = 0;         // countdown พักที่เหลือ (ms)
     this._breakActive = false;
-    this._eyeBreakActive = false; // Eye Break 20 วินาที (20-20-20)
-    this._eyeBreakTimer = 0;
 
     // Co-op helpers
     this._coopHpOverride = null;
@@ -528,44 +526,26 @@ class Game {
 
     // ── Screen Time ──────────────────────────────────
     if (this._breakActive) {
-      // พักยาว 20 นาที (หลังเล่นรวม 40 นาที)
       this._breakTimer -= dt * 1000;
       if (this._breakTimer <= 0) {
+        // พักครบแล้ว → reset และเล่นต่อ
         this._breakActive = false;
         this._breakTimer = 0;
         this._sessionMs = 0;
-        this._totalSessionMs = 0;
-        this._saveScreenTime();
-      }
-      return;
-    }
-    if (this._eyeBreakActive) {
-      // Eye Break 20 วินาที (20-20-20)
-      this._eyeBreakTimer -= dt * 1000;
-      if (this._eyeBreakTimer <= 0) {
-        this._eyeBreakActive = false;
-        this._eyeBreakTimer = 0;
-        this._sessionMs = 0; // reset รอบ 20 นาที
         this._saveScreenTime();
       }
       return;
     }
     if (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR) {
       this._sessionMs += dt * 1000;
-      this._totalSessionMs += dt * 1000;
+      // save ทุก 1 นาที — ป้องกัน refresh หรือ crash
       if (!this._lastScreenTimeSave) this._lastScreenTimeSave = Date.now();
       if (Date.now() - this._lastScreenTimeSave >= 60 * 1000) {
         this._saveScreenTime();
         this._lastScreenTimeSave = Date.now();
       }
-      // ครบ 40 นาทีรวม → พักยาว 20 นาที
-      if (this._totalSessionMs >= SCREEN_TIME_SESSION_MS) {
-        this._triggerBreak();
-        return;
-      }
-      // ครบ 20 นาที → Eye Break 20 วินาที (20-20-20)
       if (this._sessionMs >= SCREEN_TIME_LIMIT_MS) {
-        this._triggerEyeBreak();
+        this._triggerBreak();
         return;
       }
     }
@@ -573,7 +553,7 @@ class Game {
     switch (this.state) {
       case STATE.INTRO:
         this.introTimer += dt; this._stopBGM('bgm');
-        // Virtual Joypad navigation — ใช้ input.left/right/btnA ที่มาจาก joypad
+        // Joypad/keyboard 2-step navigation
         if (this._inputLock <= 0) {
           const diffKeys = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
           const diffIdx  = diffKeys.indexOf(this.difficulty);
@@ -584,15 +564,10 @@ class Game {
             if (jL) this.difficulty = diffKeys[Math.max(0, diffIdx-1)];
             if (jR) this.difficulty = diffKeys[Math.min(2, diffIdx+1)];
           } else {
-            if (jL) this._introCursor = Math.max(0, this._introCursor-1);
-            if (jR) this._introCursor = Math.min(2, this._introCursor+1);
+            if (jL) this._introModeCursor = Math.max(0, this._introModeCursor-1);
+            if (jR) this._introModeCursor = Math.min(2, this._introModeCursor+1);
           }
           if (jA) this._handleConfirm();
-          this._introPrevLeft  = this.input.left;
-          this._introPrevRight = this.input.right;
-          this._introPrevA     = this.input.btnA;
-        }
-        break;
           this._introPrevLeft  = this.input.left;
           this._introPrevRight = this.input.right;
           this._introPrevA     = this.input.btnA;
@@ -628,9 +603,8 @@ class Game {
       case STATE.TALLY:
         this.tally.update(dt);
         this._stopBGM('bgm');
-        // A button (keyboard T หรือ joypad) → ข้ามไปหน้าใส่ชื่อ
+        // A button → ข้ามไปหน้าใส่ชื่อ
         if (this.tally.done && this._inputLock <= 0) {
-          if (!this._tallyPrevA) this._tallyPrevA = false;
           const justA = this.input.btnA && !this._tallyPrevA;
           this._tallyPrevA = this.input.btnA;
           if (justA) { this.state = STATE.NAME; this.nameScreen.reset(this.player.score); this._inputLock = 400; }
@@ -658,6 +632,8 @@ class Game {
       case STATE.RANKING: this.rankingScreen.update(); break;
       case STATE.SELECT:
         this.charSelect.update(1/60);
+        // _handleSelectInput ใน _update ทำงานสำหรับ keyboard/joypad ที่ยังกดค้าง
+        // touch ถูก handle ใน _onTouch โดยตรงแล้ว
         if (this._inputLock <= 0) this._handleSelectInput();
         break;
     }
@@ -1295,7 +1271,7 @@ class Game {
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
     switch (this.state) {
-      case STATE.INTRO:       this._drawIntro(ctx); this._drawIntroJoypad(ctx); break;
+      case STATE.INTRO:       this._drawIntro(ctx); break;
       case 'COOP_LOBBY':      this.coopLobby.draw(ctx); break;
       case STATE.PLAYING:
       case STATE.GAME_OVER:
@@ -1309,34 +1285,8 @@ class Game {
       case STATE.SELECT:      this.charSelect.draw(ctx, this.images); break;
     }
     // Break overlay — วาดทับทุก state
-    if (this._eyeBreakActive) this._drawEyeBreak(ctx);
     if (this._breakActive) this._drawBreak(ctx);
     this._drawParticles(ctx);
-  }
-
-  _drawIntroJoypad(ctx) {
-    // วาด LEFT, RIGHT, A สำหรับ INTRO navigation
-    for (const key of ['LEFT','RIGHT','A']) {
-      const btn = JBTN[key];
-      const isActive = (key==='LEFT' && this.input.left) ||
-                       (key==='RIGHT' && this.input.right) ||
-                       (key==='A' && this.input.btnA);
-      const col = (key==='A') ? COL.JOYPAD_BTN_A : COL.JOYPAD_LEFT;
-      const bx=btn.x,by=btn.y,bw=btn.w,bh=btn.h,r=12;
-      ctx.save();
-      ctx.fillStyle = isActive ? '#FFF' : col;
-      ctx.globalAlpha = isActive ? 0.95 : 0.75;
-      ctx.beginPath();ctx.moveTo(bx+r,by);ctx.lineTo(bx+bw-r,by);ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+r);ctx.lineTo(bx+bw,by+bh-r);ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-r,by+bh);ctx.lineTo(bx+r,by+bh);ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-r);ctx.lineTo(bx,by+r);ctx.quadraticCurveTo(bx,by,bx+r,by);ctx.closePath();ctx.fill();
-      ctx.strokeStyle = isActive ? col : 'rgba(255,255,255,0.6)'; ctx.lineWidth=2.5; ctx.stroke();
-      ctx.globalAlpha=1;
-      ctx.font='20px '+FONT.MAIN; ctx.fillStyle=isActive?col:COL.HUD_TEXT;
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(btn.label, bx+bw/2, by+bh/2-5);
-      const hint = key==='A' ? 'ยืนยัน' : (key==='LEFT' ? 'ซ้าย' : 'ขวา');
-      ctx.font='9px '+FONT.BODY; ctx.fillStyle=isActive?col:'rgba(93,64,55,0.5)';
-      ctx.fillText(hint, bx+bw/2, by+bh-8);
-      ctx.restore();
-    }
   }
 
   _drawIntro(ctx) {
@@ -1402,38 +1352,35 @@ class Game {
       ctx.fillText(DIFFICULTY[key].label,x+dw/2,y+dh/2);
     }
 
-    // Solo play button
-    ctx.fillStyle = this._introStep===1 && this._introCursor===0 ? COL.PRIMARY_D : COL.PRIMARY;
-    _rr(ctx, 8, 472, 116, 44, 12); ctx.fill();
-    if (this._introStep===1 && this._introCursor===0) { ctx.strokeStyle='#fff'; ctx.lineWidth=3; _rr(ctx,8,472,116,44,12); ctx.stroke(); }
-    ctx.font = '12px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('🎮', 66, 487); ctx.font='11px '+FONT.BODY;
-    ctx.fillText('เล่นคนเดียว', 66, 503);
+    // 3 Mode buttons แนวนอน
+    const _mw=114, _mg=6, _mx0=(WIDTH-(_mw*3+_mg*2))/2, _my=472, _mh=44;
+    const _mCols  = [COL.PRIMARY, COL.MINT, COL.SKY_BLUE];
+    const _mColsD = [COL.PRIMARY_D, '#2E7D6B', '#1565C0'];
+    const _mLabels= [['🎮','เล่นคนเดียว'],['🎮🎮','2คน เครื่องเดียว'],['👥','2คน Online']];
+    for (let i=0;i<3;i++) {
+      const mx=_mx0+i*(_mw+_mg);
+      const active = this._introModeCursor===i;
+      // ถ้า step=0 (กำลังเลือก difficulty) → ทำ mode buttons dim ลงนิดหน่อย
+      const dim = (this._introStep===0) ? 0.65 : 1;
+      ctx.save(); ctx.globalAlpha=dim;
+      ctx.fillStyle = active ? _mColsD[i] : _mCols[i];
+      _rr(ctx,mx,_my,_mw,_mh,12); ctx.fill();
+      if (active) { ctx.strokeStyle='#fff'; ctx.lineWidth=3; _rr(ctx,mx,_my,_mw,_mh,12); ctx.stroke(); }
+      ctx.globalAlpha=1;
+      ctx.fillStyle=COL.HUD_TEXT; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font='16px '+FONT.BODY;
+      ctx.fillText(_mLabels[i][0], mx+_mw/2, _my+14);
+      ctx.font='10px '+FONT.BODY;
+      ctx.fillText(_mLabels[i][1], mx+_mw/2, _my+32);
+      ctx.restore();
+    }
 
-    // Local Co-op button
-    ctx.fillStyle = this._introStep===1 && this._introCursor===1 ? '#2E7D6B' : COL.MINT;
-    _rr(ctx, 132, 472, 126, 44, 12); ctx.fill();
-    if (this._introStep===1 && this._introCursor===1) { ctx.strokeStyle='#fff'; ctx.lineWidth=3; _rr(ctx,132,472,126,44,12); ctx.stroke(); }
-    ctx.fillStyle = COL.HUD_TEXT; ctx.font='12px '+FONT.BODY;
-    ctx.fillText('🎮🎮', 195, 487); ctx.font='11px '+FONT.BODY;
-    ctx.fillText('2คน เครื่องเดียว', 195, 503);
-
-    // Online Co-op button
-    ctx.fillStyle = this._introStep===1 && this._introCursor===2 ? '#1565C0' : COL.SKY_BLUE;
-    _rr(ctx, 266, 472, 116, 44, 12); ctx.fill();
-    if (this._introStep===1 && this._introCursor===2) { ctx.strokeStyle='#fff'; ctx.lineWidth=3; _rr(ctx,266,472,116,44,12); ctx.stroke(); }
-    ctx.fillStyle = COL.HUD_TEXT; ctx.font='12px '+FONT.BODY;
-    ctx.fillText('👥', 324, 487); ctx.font='11px '+FONT.BODY;
-    ctx.fillText('2คน Online', 324, 503);
-
-    // Keyboard hint
-    if (this._introStep === 0) {
-      ctx.font = '11px '+FONT.BODY; ctx.fillStyle = 'rgba(93,64,55,0.5)';
-      ctx.fillText('◀ ▶ เลือกระดับ   T ยืนยัน', WIDTH/2, 528);
+    // Hint 2-step
+    ctx.font='11px '+FONT.BODY; ctx.fillStyle='rgba(93,64,55,0.5)'; ctx.textAlign='center';
+    if (this._introStep===0) {
+      ctx.fillText('◀ ▶ เลือกระดับ   A ยืนยัน', WIDTH/2, 526);
     } else {
-      ctx.font = '11px '+FONT.BODY; ctx.fillStyle = 'rgba(93,64,55,0.5)';
-      ctx.fillText('◀ ▶ เลือกโหมด   T เริ่มเกม', WIDTH/2, 528);
+      ctx.fillText('◀ ▶ เลือกโหมด   A เริ่มเกม', WIDTH/2, 526);
     }
 
     ctx.font = '24px '+FONT.BODY; ctx.textAlign = 'center';
@@ -1547,12 +1494,7 @@ class Game {
     document.addEventListener('keydown', e => this._onKey(e, true), {passive:false});
     document.addEventListener('keyup', e => this._onKey(e, false), {passive:false});
     this.canvas.addEventListener('touchstart', e => this._onTouch(e), {passive:false});
-    this.canvas.addEventListener('touchmove', e => {
-      e.preventDefault();
-      if (this.state===STATE.PLAYING) this._recomputeTouchInput(e.touches);
-      if (this.state===STATE.INTRO)   this._recomputeIntroTouch(e.touches);
-      if (this.state===STATE.SELECT)  this._recomputeSelectTouch(e.touches);
-    }, {passive:false});
+    this.canvas.addEventListener('touchmove', e => { e.preventDefault(); if(this.state===STATE.PLAYING) this._recomputeTouchInput(e.touches); if(this.state===STATE.SELECT) this._recomputeSelectTouch(e.touches); }, {passive:false});
     this.canvas.addEventListener('touchend', e => this._onTouchEnd(e), {passive:false});
     this.canvas.addEventListener('touchcancel', e => this._onTouchEnd(e), {passive:false});
     this.canvas.addEventListener('mousedown', e => this._onMouse(e, true));
@@ -1586,33 +1528,31 @@ class Game {
       return;
     }
 
-    if (['a','d','r','t','j','l','o','p'].includes(kl)) e.preventDefault();
+    if (['a','d','r','t','arrowleft','arrowright','o','p'].includes(kl)) e.preventDefault();
 
     // P1 keys: A=ซ้าย, D=ขวา, R=ยิง, T=กระโดด
-    // P1 movement keys — ใช้ได้ทุก state ยกเว้น INTRO (ป้องกัน double trigger กับ joypad)
+    // INTRO: a/d เลื่อน cursor, t ยืนยัน — ผ่าน input.left/right/btnA
+    // Non-INTRO: a/d เป็น P1 movement
     if (this.state !== STATE.INTRO) {
       if (kl === 'a') this.input.left  = down;
       if (kl === 'd') this.input.right = down;
-    }
-    if (kl === 'r') this.input.btnB = down;
-    if (kl === 't') this.input.btnA = down;
-
-    // INTRO navigation: a/d หรือ ←/→ เลื่อน, T/Enter ยืนยัน
-    // ส่งตรงเข้า input.left/right แล้วให้ _update INTRO จัดการด้วย edge detection
-    if (this.state === STATE.INTRO) {
+    } else {
+      // ใน INTRO ให้ a/d/←/→ set input.left/right เพื่อให้ _update INTRO จัดการด้วย edge detection
       if (kl === 'a' || kl === 'arrowleft')  this.input.left  = down;
       if (kl === 'd' || kl === 'arrowright') this.input.right = down;
     }
+    if (kl === 'r') this.input.btnB = down;
+    if (kl === 't') this.input.btnA = down;
 
     // P2 Local keys: ←=ซ้าย, →=ขวา, O=ยิง, P=กระโดด
     // ทำงานทั้งตอนเล่น (localCoop) และตอนเลือกตัวละคร (SELECT state)
     const isLocalP2Active = this.localCoop && this.player2;
     const isSelectP2 = this.state === STATE.SELECT && this._pendingMode === 'local';
     if (isLocalP2Active || isSelectP2) {
-      if (kl === 'j') this.input2.left  = down;
-      if (kl === 'l') this.input2.right = down;
-      if (kl === 'o') this.input2.btnB  = down;
-      if (kl === 'p') this.input2.btnA  = down;
+      if (kl === 'j')          this.input2.left  = down;
+      if (kl === 'l')          this.input2.right = down;
+      if (kl === 'o')          this.input2.btnB  = down;
+      if (kl === 'p')          this.input2.btnA  = down;
     }
 
     if (down && this._inputLock <= 0) {
@@ -1649,35 +1589,34 @@ class Game {
   _handleConfirm() {
     if (this.state === STATE.INTRO) {
       if (this._introStep === 0) {
-        // Step 1: confirm difficulty → ไปเลือกโหมด
+        // Step 1: ยืนยัน difficulty → ไปเลือกโหมด
         this._introStep = 1;
-        this._introCursor = 0;
+        this._inputLock = 150;
       } else {
-        // Step 2: confirm mode
-        if (this._introCursor === 0) this._startGame();
-        else if (this._introCursor === 1) this._startLocalCoop();
+        // Step 2: ยืนยันโหมด
+        if (this._introModeCursor === 0) this._startGame();
+        else if (this._introModeCursor === 1) this._startLocalCoop();
         else { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; }
       }
     }
-    else if (this.state === STATE.TALLY && this.tally.done) {
-      this.state = STATE.NAME; this.nameScreen.reset(this.player.score); this._inputLock = 400;
-    }
+    else if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(this.player.score); this._inputLock = 400; }
     else if (this.state === STATE.RANKING) this._restartGame();
   }
 
   _handleIntroTap(pos) {
-    // Difficulty buttons (touch → เลือกได้เลยไม่ต้อง confirm)
+    // Difficulty buttons: y 432-466 — touch เลือกได้เลย
     if (pos.y >= 432 && pos.y <= 466) {
       const dw=108, dg=6, dx0=(WIDTH-(dw*3+dg*2))/2;
       if (pos.x >= dx0 && pos.x <= dx0+dw) { this.difficulty = DIFFICULTY.EASY; return true; }
       if (pos.x >= dx0+dw+dg && pos.x <= dx0+dw*2+dg) { this.difficulty = DIFFICULTY.MEDIUM; return true; }
       if (pos.x >= dx0+dw*2+dg*2 && pos.x <= dx0+dw*3+dg*2) { this.difficulty = DIFFICULTY.HARD; return true; }
     }
-    // Mode buttons: touch → ไปต่อได้เลย
+    // Mode buttons แนวนอน: y 472-516 — touch ข้ามไปได้เลยไม่ต้อง confirm 2 ครั้ง
+    const _mw=114, _mg=6, _mx0=(WIDTH-(_mw*3+_mg*2))/2;
     if (pos.y >= 472 && pos.y <= 516) {
-      if (pos.x >= 8   && pos.x <= 124) { this._startGame();       return true; }
-      if (pos.x >= 132 && pos.x <= 258) { this._startLocalCoop();  return true; }
-      if (pos.x >= 266 && pos.x <= 382) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
+      if (pos.x >= _mx0         && pos.x <= _mx0+_mw)         { this._startGame();       return true; }
+      if (pos.x >= _mx0+_mw+_mg && pos.x <= _mx0+_mw*2+_mg)  { this._startLocalCoop();  return true; }
+      if (pos.x >= _mx0+_mw*2+_mg*2 && pos.x <= _mx0+_mw*3+_mg*2) { this.state='COOP_LOBBY'; this.coopLobby.state='menu'; return true; }
     }
     return false;
   }
@@ -1736,13 +1675,11 @@ class Game {
     if (this.state === STATE.PLAYING) {
       this._recomputeTouchInput(e.touches);
     }
-    // INTRO state: Virtual Joypad ใช้ได้
-    if (this.state === STATE.INTRO) {
-      this._recomputeIntroTouch(e.changedTouches);
-    }
     // SELECT state: ใช้ changedTouches เพราะ touchstart บาง device e.touches ยัง empty
     if (this.state === STATE.SELECT) {
       this._recomputeSelectTouch(e.changedTouches);
+      // เรียก _handleSelectInput ทันที ไม่รอ frame ถัดไป
+      if (this._inputLock <= 0) this._handleSelectInput();
     }
   }
 
@@ -1750,25 +1687,7 @@ class Game {
     e.preventDefault();
     for (const t of e.changedTouches) delete this._touches[t.identifier];
     this._recomputeTouchInput(e.touches);
-    if (this.state === STATE.INTRO)  this._recomputeIntroTouch(e.touches);
     if (this.state === STATE.SELECT) this._recomputeSelectTouch(e.touches);
-  }
-
-  _recomputeIntroTouch(touchList) {
-    this.input.left = false; this.input.right = false; this.input.btnA = false;
-    for (const touch of touchList) {
-      const pos = this._getCanvasPos(touch.clientX, touch.clientY);
-      const pad = 8;
-      for (const key of ['LEFT','RIGHT','A']) {
-        const btn = JBTN[key];
-        if (pos.x >= btn.x-pad && pos.x <= btn.x+btn.w+pad &&
-            pos.y >= btn.y-pad && pos.y <= btn.y+btn.h+pad) {
-          if (key==='LEFT')  this.input.left  = true;
-          if (key==='RIGHT') this.input.right = true;
-          if (key==='A')     this.input.btnA  = true;
-        }
-      }
-    }
   }
 
   _recomputeSelectTouch(touchList) {
@@ -1833,6 +1752,16 @@ class Game {
     if (this.state === STATE.PLAYING && pos.y >= HEIGHT-JOYPAD_H) {
       if (!down) { this.input.left=false; this.input.right=false; this.input.btnA=false; this.input.btnB=false; }
       else this._checkJoypadBtn(pos);
+    }
+    // SELECT state: mouse click บน joypad
+    if (this.state === STATE.SELECT) {
+      if (!down) {
+        this.input.left=false; this.input.right=false; this.input.btnA=false;
+        this._recomputeSelectTouch([]);
+      } else {
+        this._recomputeSelectTouch([{ clientX: e.clientX, clientY: e.clientY }]);
+        if (this._inputLock <= 0) this._handleSelectInput();
+      }
     }
   }
 
@@ -1928,23 +1857,21 @@ class Game {
     this._tallyPayload = null;
     this._waitingForTally = false;
     this._stage4Timer = 0;
-    this._eyeBreakActive = false;
-    this._eyeBreakTimer = 0;
     this._myCharKey = null;
     this._hostCharKey = null;
     this._guestCharKey = null;
     this.input2 = { left:false, right:false, btnA:false, btnB:false };
     this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
+    this._introModeCursor = 0;
+    this._introStep      = 0;
+    this._introPrevLeft  = false;
+    this._introPrevRight = false;
+    this._introPrevA     = false;
     this.net.disconnect();
 
     this.state = STATE.INTRO;
     this.introTimer = 0;
     this._inputLock = 400;
-    this._introStep = 0;
-    this._introCursor = 1;
-    this._introPrevLeft = false;
-    this._introPrevRight = false;
-    this._introPrevA = false;
   }
 
   // ══════════════════════════════════════════════════
@@ -2015,16 +1942,7 @@ class Game {
     } catch(e) {}
   }
 
-  _triggerEyeBreak() {
-    // Eye Break 20 วินาที — หยุดเกมแต่ไม่ game over
-    this._eyeBreakActive = true;
-    this._eyeBreakTimer = SCREEN_TIME_EYE_MS;
-    this._stopBGM('bgm');
-    this._saveScreenTime();
-  }
-
   _triggerBreak() {
-    // พักยาว 20 นาที — หลังเล่นรวม 40 นาที
     this._breakActive = true;
     this._breakTimer = SCREEN_TIME_BREAK_MS;
     this._stopBGM('bgm');
@@ -2032,95 +1950,48 @@ class Game {
       this.state = STATE.GAME_OVER;
       this.stageClearTimer = 99999;
     }
-    this._saveScreenTime();
-  }
-
-  _drawEyeBreak(ctx) {
-    ctx.save();
-    ctx.fillStyle = 'rgba(30,30,60,0.96)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    // Icon
-    ctx.font = '72px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('👁️', WIDTH/2, HEIGHT/2 - 150);
-
-    // Title
-    ctx.font = 'bold 22px ' + FONT.MAIN;
-    ctx.fillStyle = '#FFE082';
-    ctx.fillText('กฎ 20-20-20 👀', WIDTH/2, HEIGHT/2 - 68);
-
-    // Message
-    ctx.font = '15px ' + FONT.BODY;
-    ctx.fillStyle = '#FFF9C4';
-    ctx.fillText('มองออกไปไกลๆ 20 ฟุต', WIDTH/2, HEIGHT/2 - 28);
-    ctx.fillText('เพื่อลดความล้าของกล้ามเนื้อตา', WIDTH/2, HEIGHT/2 + 2);
-
-    // Countdown วงกลม
-    const secLeft = Math.ceil(this._eyeBreakTimer / 1000);
-    const pct = this._eyeBreakTimer / SCREEN_TIME_EYE_MS;
-    const cx = WIDTH/2, cy = HEIGHT/2 + 90, r = 50;
-    // วงนอก
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
-    // วงนับถอยหลัง
-    ctx.strokeStyle = '#FFE082';
-    ctx.lineWidth = 8;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + Math.PI*2*pct);
-    ctx.stroke();
-    // ตัวเลข
-    ctx.font = 'bold 36px ' + FONT.MAIN;
-    ctx.fillStyle = '#FFE082';
-    ctx.fillText(secLeft, cx, cy);
-
-    ctx.font = '12px ' + FONT.BODY;
-    ctx.fillStyle = 'rgba(255,249,196,0.6)';
-    ctx.fillText('วินาที', cx, cy + 30);
-
-    // Footer
-    ctx.font = '12px ' + FONT.BODY;
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.fillText('เกมจะกลับมาอัตโนมัติ ✨', WIDTH/2, HEIGHT/2 + 170);
-
-    ctx.restore();
+    this._saveScreenTime(); // บันทึก breakUntil = now + 5 นาที
   }
 
   _drawBreak(ctx) {
+    // Full overlay
     ctx.save();
     ctx.fillStyle = 'rgba(255,248,225,0.97)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+    // Icon
     ctx.font = '64px serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('😴', WIDTH/2, HEIGHT/2 - 130);
+    ctx.fillText('👀', WIDTH/2, HEIGHT/2 - 120);
 
-    ctx.font = 'bold 24px ' + FONT.MAIN;
+    // Title
+    ctx.font = 'bold 26px ' + FONT.MAIN;
     ctx.fillStyle = COL.PRIMARY_D;
-    ctx.fillText('เล่นมาครบ 40 นาทีแล้ว!', WIDTH/2, HEIGHT/2 - 50);
+    ctx.fillText('เล่นมานานแล้วนะ!', WIDTH/2, HEIGHT/2 - 40);
 
+    // Subtitle
     ctx.font = '15px ' + FONT.BODY;
     ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('พักสายตา 20 นาที แล้วค่อยกลับมานะ 🌟', WIDTH/2, HEIGHT/2 - 10);
+    ctx.fillText('พักสายตาสักครู่ก่อนนะ 🌟', WIDTH/2, HEIGHT/2);
 
+    // Countdown
     const secLeft = Math.ceil(this._breakTimer / 1000);
     const min = Math.floor(secLeft / 60);
     const sec = secLeft % 60;
     const timeStr = min + ':' + (sec < 10 ? '0' : '') + sec;
-    ctx.font = 'bold 52px ' + FONT.MAIN;
+
+    ctx.font = 'bold 48px ' + FONT.MAIN;
     ctx.fillStyle = COL.PRIMARY_D;
     ctx.fillText(timeStr, WIDTH/2, HEIGHT/2 + 70);
 
     ctx.font = '13px ' + FONT.BODY;
     ctx.fillStyle = 'rgba(93,64,55,0.6)';
-    ctx.fillText('อีกสักครู่จะเล่นต่อได้เลย!', WIDTH/2, HEIGHT/2 + 128);
+    ctx.fillText('อีกสักครู่จะเล่นต่อได้เลย!', WIDTH/2, HEIGHT/2 + 120);
 
+    // Progress bar
     const pct = 1 - (this._breakTimer / SCREEN_TIME_BREAK_MS);
-    const bw = 260, bh = 10, bx = WIDTH/2 - bw/2, by = HEIGHT/2 + 155;
+    const bw = 260, bh = 10, bx = WIDTH/2 - bw/2, by = HEIGHT/2 + 148;
     ctx.fillStyle = 'rgba(0,0,0,0.1)';
     ctx.beginPath(); _rr(ctx, bx, by, bw, bh, 5); ctx.fill();
     ctx.fillStyle = COL.PRIMARY;

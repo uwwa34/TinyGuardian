@@ -71,51 +71,54 @@ class NameScreen {
   draw(ctx){
     const g=ctx.createLinearGradient(0,0,0,HEIGHT);g.addColorStop(0,'#FFF8E1');g.addColorStop(1,'#FFE082');
     ctx.fillStyle=g;ctx.fillRect(0,0,WIDTH,HEIGHT);
-    ['🌟','✨','⭐','🌟'].forEach((e,i)=>{const px=[22,WIDTH-28,48,WIDTH-52][i],py=[44,44,HEIGHT-50,HEIGHT-50][i];ctx.font='18px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.globalAlpha=0.4+Math.sin(Date.now()/700+i)*0.3;ctx.fillText(e,px,py);});ctx.globalAlpha=1;
 
-    // Panel ใส่ชื่อ
-    ctx.fillStyle='rgba(255,248,225,0.92)';ctx.strokeStyle=COL.PRIMARY;ctx.lineWidth=2;_rr(ctx,16,52,WIDTH-32,215,18);ctx.fill();ctx.stroke();
-    ctx.fillStyle=COL.HUD_TEXT;ctx.font='bold 20px '+FONT.MAIN;ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText('✏️ ใส่ชื่อผู้เล่น',WIDTH/2,82);
-    ctx.fillStyle=COL.PRIMARY_D;ctx.font='13px '+FONT.BODY;ctx.fillText('ไม่ใส่ชื่อ = GUARDIAN',WIDTH/2,106);
-    const bx=WIDTH/2-140,by=124;
-    ctx.fillStyle='#FFF';ctx.strokeStyle=COL.PRIMARY;ctx.lineWidth=2;_rr(ctx,bx,by,280,46,10);ctx.fill();ctx.stroke();
-    ctx.fillStyle=this.name?COL.HUD_TEXT:'#9E9E9E';ctx.font='bold 20px "Courier New",monospace';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText((this.name||'GUARDIAN')+(this.cursor?'|':' '),WIDTH/2,by+23);
-    ctx.fillStyle=COL.PRIMARY;_rr(ctx,WIDTH/2-100,184,200,40,12);ctx.fill();ctx.strokeStyle=COL.PRIMARY_D;ctx.lineWidth=2;_rr(ctx,WIDTH/2-100,184,200,40,12);ctx.stroke();
-    ctx.fillStyle=COL.HUD_TEXT;ctx.font='bold 15px '+FONT.MAIN;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('✅ ยืนยันชื่อ',WIDTH/2,204);
+    // Panel ใส่ชื่อ (compact)
+    ctx.fillStyle='rgba(255,248,225,0.95)';ctx.strokeStyle=COL.PRIMARY;ctx.lineWidth=2;
+    _rr(ctx,16,36,WIDTH-32,178,16);ctx.fill();ctx.stroke();
+    ctx.fillStyle=COL.HUD_TEXT;ctx.font='bold 18px '+FONT.MAIN;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('✏️ ใส่ชื่อผู้เล่น',WIDTH/2,60);
+    ctx.fillStyle=COL.PRIMARY_D;ctx.font='12px '+FONT.BODY;
+    ctx.fillText('ไม่ใส่ชื่อ = GUARDIAN',WIDTH/2,80);
+    const bx=WIDTH/2-130,by=96;
+    ctx.fillStyle='#FFF';ctx.strokeStyle=COL.PRIMARY;ctx.lineWidth=2;_rr(ctx,bx,by,260,40,10);ctx.fill();ctx.stroke();
+    ctx.fillStyle=this.name?COL.HUD_TEXT:'#9E9E9E';ctx.font='bold 18px "Courier New",monospace';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText((this.name||'GUARDIAN')+(this.cursor?'|':' '),WIDTH/2,by+20);
+    ctx.fillStyle=COL.PRIMARY;_rr(ctx,WIDTH/2-85,150,170,36,12);ctx.fill();
+    ctx.strokeStyle=COL.PRIMARY_D;ctx.lineWidth=2;_rr(ctx,WIDTH/2-85,150,170,36,12);ctx.stroke();
+    ctx.fillStyle=COL.HUD_TEXT;ctx.font='bold 14px '+FONT.MAIN;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('✅ ยืนยันชื่อ',WIDTH/2,168);
 
-    // Keyboard แถวเล็ก
-    this._drawVKB(ctx,242);
+    // VKB
+    this._drawVKB(ctx,228);
 
-    // แสดงลำดับที่ได้
+    // ลำดับที่ — คำนวณจาก score ปัจจุบัน
     try {
       const raw=localStorage.getItem(RANKING_KEY);
       const entries=raw?JSON.parse(raw):[];
-      const rank=entries.findIndex(e=>e.score===this.playerScore)+1;
-      if(rank>0){
-        ctx.font='bold 16px '+FONT.MAIN;ctx.fillStyle=COL.PRIMARY_D;ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.fillText('🏆 อันดับที่ '+rank+' จาก '+entries.length+' คน',WIDTH/2,448);
-      }
+      const rank=entries.filter(e=>e.score>this.playerScore).length+1;
+      const total=entries.length+(entries.some(e=>e.score===this.playerScore)?0:1);
+      ctx.font='bold 15px '+FONT.MAIN;ctx.fillStyle=COL.PRIMARY_D;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('🏆 อันดับที่ '+rank+' จาก '+total+' คน',WIDTH/2,436+Math.sin(Date.now()/600)*3);
     } catch(e){}
   }
   _drawVKB(ctx,startY){
     const rows=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['Z','X','C','V','B','N','M','⌫']];
-    const keyH=36,keyGap=3;this._kbData={rows,startY,keyH,keyGap};
-    rows.forEach((row,ri)=>{const keyW=Math.floor((WIDTH-20)/row.length)-keyGap;const rowX=(WIDTH-(keyW+keyGap)*row.length)/2;
+    const keyH=32,keyGap=3;this._kbData={rows,startY,keyH,keyGap};
+    rows.forEach((row,ri)=>{const keyW=Math.floor((WIDTH-16)/row.length)-keyGap;const rowX=(WIDTH-(keyW+keyGap)*row.length)/2;
       row.forEach((k,ki)=>{const kx=rowX+ki*(keyW+keyGap),ky=startY+ri*(keyH+keyGap),isDel=k==='⌫';
         ctx.fillStyle=isDel?'rgba(239,154,154,0.3)':'rgba(255,236,179,0.7)';ctx.strokeStyle=isDel?COL.HEART_ON:COL.PRIMARY;ctx.lineWidth=1;_rr(ctx,kx,ky,keyW,keyH,5);ctx.fill();ctx.stroke();
-        ctx.fillStyle=isDel?COL.HEART_ON:COL.HUD_TEXT;ctx.font=(isDel?13:12)+'px '+FONT.BODY;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(k,kx+keyW/2,ky+keyH/2);
+        ctx.fillStyle=isDel?COL.HEART_ON:COL.HUD_TEXT;ctx.font=(isDel?12:11)+'px '+FONT.BODY;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(k,kx+keyW/2,ky+keyH/2);
       });
     });
   }
   handleTouch(tx,ty){
     if(!this._kbData)return null;const{rows,startY,keyH,keyGap}=this._kbData;
-    for(let ri=0;ri<rows.length;ri++){const row=rows[ri];const keyW=Math.floor((WIDTH-20)/row.length)-keyGap;const rowX=(WIDTH-(keyW+keyGap)*row.length)/2;
+    for(let ri=0;ri<rows.length;ri++){const row=rows[ri];const keyW=Math.floor((WIDTH-16)/row.length)-keyGap;const rowX=(WIDTH-(keyW+keyGap)*row.length)/2;
       for(let ki=0;ki<row.length;ki++){const kx=rowX+ki*(keyW+keyGap),ky=startY+ri*(keyH+keyGap);
         if(tx>=kx&&tx<=kx+keyW&&ty>=ky&&ty<=ky+keyH){const k=row[ki];if(k==='⌫')return this.handleKey('Backspace');return this.handleKey(k);}
     }}
-    if(tx>=WIDTH/2-100&&tx<=WIDTH/2+100&&ty>=184&&ty<=224)return this.handleKey('Enter');
+    if(tx>=WIDTH/2-85&&tx<=WIDTH/2+85&&ty>=150&&ty<=186)return this.handleKey('Enter');
     return null;
   }
 }
