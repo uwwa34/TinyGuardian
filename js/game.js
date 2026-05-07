@@ -573,13 +573,13 @@ class Game {
     switch (this.state) {
       case STATE.INTRO:
         this.introTimer += dt; this._stopBGM('bgm');
-        // Joypad navigation
+        // Virtual Joypad navigation — ใช้ input.left/right/btnA ที่มาจาก joypad
         if (this._inputLock <= 0) {
           const diffKeys = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
           const diffIdx  = diffKeys.indexOf(this.difficulty);
-          const jL = this.input.left && !this._introPrevLeft;
+          const jL = this.input.left  && !this._introPrevLeft;
           const jR = this.input.right && !this._introPrevRight;
-          const jA = this.input.btnA && !this._introPrevA;
+          const jA = this.input.btnA  && !this._introPrevA;
           if (this._introStep === 0) {
             if (jL) this.difficulty = diffKeys[Math.max(0, diffIdx-1)];
             if (jR) this.difficulty = diffKeys[Math.min(2, diffIdx+1)];
@@ -588,6 +588,11 @@ class Game {
             if (jR) this._introCursor = Math.min(2, this._introCursor+1);
           }
           if (jA) this._handleConfirm();
+          this._introPrevLeft  = this.input.left;
+          this._introPrevRight = this.input.right;
+          this._introPrevA     = this.input.btnA;
+        }
+        break;
           this._introPrevLeft  = this.input.left;
           this._introPrevRight = this.input.right;
           this._introPrevA     = this.input.btnA;
@@ -1290,7 +1295,7 @@ class Game {
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
     switch (this.state) {
-      case STATE.INTRO:       this._drawIntro(ctx); break;
+      case STATE.INTRO:       this._drawIntro(ctx); this._drawIntroJoypad(ctx); break;
       case 'COOP_LOBBY':      this.coopLobby.draw(ctx); break;
       case STATE.PLAYING:
       case STATE.GAME_OVER:
@@ -1307,6 +1312,31 @@ class Game {
     if (this._eyeBreakActive) this._drawEyeBreak(ctx);
     if (this._breakActive) this._drawBreak(ctx);
     this._drawParticles(ctx);
+  }
+
+  _drawIntroJoypad(ctx) {
+    // วาด LEFT, RIGHT, A สำหรับ INTRO navigation
+    for (const key of ['LEFT','RIGHT','A']) {
+      const btn = JBTN[key];
+      const isActive = (key==='LEFT' && this.input.left) ||
+                       (key==='RIGHT' && this.input.right) ||
+                       (key==='A' && this.input.btnA);
+      const col = (key==='A') ? COL.JOYPAD_BTN_A : COL.JOYPAD_LEFT;
+      const bx=btn.x,by=btn.y,bw=btn.w,bh=btn.h,r=12;
+      ctx.save();
+      ctx.fillStyle = isActive ? '#FFF' : col;
+      ctx.globalAlpha = isActive ? 0.95 : 0.75;
+      ctx.beginPath();ctx.moveTo(bx+r,by);ctx.lineTo(bx+bw-r,by);ctx.quadraticCurveTo(bx+bw,by,bx+bw,by+r);ctx.lineTo(bx+bw,by+bh-r);ctx.quadraticCurveTo(bx+bw,by+bh,bx+bw-r,by+bh);ctx.lineTo(bx+r,by+bh);ctx.quadraticCurveTo(bx,by+bh,bx,by+bh-r);ctx.lineTo(bx,by+r);ctx.quadraticCurveTo(bx,by,bx+r,by);ctx.closePath();ctx.fill();
+      ctx.strokeStyle = isActive ? col : 'rgba(255,255,255,0.6)'; ctx.lineWidth=2.5; ctx.stroke();
+      ctx.globalAlpha=1;
+      ctx.font='20px '+FONT.MAIN; ctx.fillStyle=isActive?col:COL.HUD_TEXT;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(btn.label, bx+bw/2, by+bh/2-5);
+      const hint = key==='A' ? 'ยืนยัน' : (key==='LEFT' ? 'ซ้าย' : 'ขวา');
+      ctx.font='9px '+FONT.BODY; ctx.fillStyle=isActive?col:'rgba(93,64,55,0.5)';
+      ctx.fillText(hint, bx+bw/2, by+bh-8);
+      ctx.restore();
+    }
   }
 
   _drawIntro(ctx) {
@@ -1400,10 +1430,10 @@ class Game {
     // Keyboard hint
     if (this._introStep === 0) {
       ctx.font = '11px '+FONT.BODY; ctx.fillStyle = 'rgba(93,64,55,0.5)';
-      ctx.fillText('◀ ▶ เลือกระดับ   A ยืนยัน', WIDTH/2, 528);
+      ctx.fillText('◀ ▶ เลือกระดับ   T ยืนยัน', WIDTH/2, 528);
     } else {
       ctx.font = '11px '+FONT.BODY; ctx.fillStyle = 'rgba(93,64,55,0.5)';
-      ctx.fillText('◀ ▶ เลือกโหมด   A เริ่มเกม', WIDTH/2, 528);
+      ctx.fillText('◀ ▶ เลือกโหมด   T เริ่มเกม', WIDTH/2, 528);
     }
 
     ctx.font = '24px '+FONT.BODY; ctx.textAlign = 'center';
@@ -1517,7 +1547,12 @@ class Game {
     document.addEventListener('keydown', e => this._onKey(e, true), {passive:false});
     document.addEventListener('keyup', e => this._onKey(e, false), {passive:false});
     this.canvas.addEventListener('touchstart', e => this._onTouch(e), {passive:false});
-    this.canvas.addEventListener('touchmove', e => { e.preventDefault(); if(this.state===STATE.PLAYING) this._recomputeTouchInput(e.touches); if(this.state===STATE.SELECT) this._recomputeSelectTouch(e.touches); }, {passive:false});
+    this.canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (this.state===STATE.PLAYING) this._recomputeTouchInput(e.touches);
+      if (this.state===STATE.INTRO)   this._recomputeIntroTouch(e.touches);
+      if (this.state===STATE.SELECT)  this._recomputeSelectTouch(e.touches);
+    }, {passive:false});
     this.canvas.addEventListener('touchend', e => this._onTouchEnd(e), {passive:false});
     this.canvas.addEventListener('touchcancel', e => this._onTouchEnd(e), {passive:false});
     this.canvas.addEventListener('mousedown', e => this._onMouse(e, true));
@@ -1554,22 +1589,19 @@ class Game {
     if (['a','d','r','t','j','l','o','p'].includes(kl)) e.preventDefault();
 
     // P1 keys: A=ซ้าย, D=ขวา, R=ยิง, T=กระโดด
-    if (kl === 'a') this.input.left  = down;
-    if (kl === 'd') this.input.right = down;
-    if (kl === 'r') this.input.btnB  = down;
-    if (kl === 't') this.input.btnA  = down;
+    // P1 movement keys — ใช้ได้ทุก state ยกเว้น INTRO (ป้องกัน double trigger กับ joypad)
+    if (this.state !== STATE.INTRO) {
+      if (kl === 'a') this.input.left  = down;
+      if (kl === 'd') this.input.right = down;
+    }
+    if (kl === 'r') this.input.btnB = down;
+    if (kl === 't') this.input.btnA = down;
 
-    // INTRO navigation: Left/Right เลื่อน cursor, A ยืนยัน
-    if (this.state === STATE.INTRO && down && this._inputLock <= 0) {
-      const diffKeys = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
-      const diffIdx  = diffKeys.indexOf(this.difficulty);
-      if (this._introStep === 0) {
-        if (kl === 'a') { this.difficulty = diffKeys[Math.max(0, diffIdx-1)]; return; }
-        if (kl === 'd') { this.difficulty = diffKeys[Math.min(2, diffIdx+1)]; return; }
-      } else {
-        if (kl === 'a') { this._introCursor = Math.max(0, this._introCursor-1); return; }
-        if (kl === 'd') { this._introCursor = Math.min(2, this._introCursor+1); return; }
-      }
+    // INTRO navigation: a/d หรือ ←/→ เลื่อน, T/Enter ยืนยัน
+    // ส่งตรงเข้า input.left/right แล้วให้ _update INTRO จัดการด้วย edge detection
+    if (this.state === STATE.INTRO) {
+      if (kl === 'a' || kl === 'arrowleft')  this.input.left  = down;
+      if (kl === 'd' || kl === 'arrowright') this.input.right = down;
     }
 
     // P2 Local keys: ←=ซ้าย, →=ขวา, O=ยิง, P=กระโดด
@@ -1704,6 +1736,10 @@ class Game {
     if (this.state === STATE.PLAYING) {
       this._recomputeTouchInput(e.touches);
     }
+    // INTRO state: Virtual Joypad ใช้ได้
+    if (this.state === STATE.INTRO) {
+      this._recomputeIntroTouch(e.changedTouches);
+    }
     // SELECT state: ใช้ changedTouches เพราะ touchstart บาง device e.touches ยัง empty
     if (this.state === STATE.SELECT) {
       this._recomputeSelectTouch(e.changedTouches);
@@ -1714,7 +1750,25 @@ class Game {
     e.preventDefault();
     for (const t of e.changedTouches) delete this._touches[t.identifier];
     this._recomputeTouchInput(e.touches);
+    if (this.state === STATE.INTRO)  this._recomputeIntroTouch(e.touches);
     if (this.state === STATE.SELECT) this._recomputeSelectTouch(e.touches);
+  }
+
+  _recomputeIntroTouch(touchList) {
+    this.input.left = false; this.input.right = false; this.input.btnA = false;
+    for (const touch of touchList) {
+      const pos = this._getCanvasPos(touch.clientX, touch.clientY);
+      const pad = 8;
+      for (const key of ['LEFT','RIGHT','A']) {
+        const btn = JBTN[key];
+        if (pos.x >= btn.x-pad && pos.x <= btn.x+btn.w+pad &&
+            pos.y >= btn.y-pad && pos.y <= btn.y+btn.h+pad) {
+          if (key==='LEFT')  this.input.left  = true;
+          if (key==='RIGHT') this.input.right = true;
+          if (key==='A')     this.input.btnA  = true;
+        }
+      }
+    }
   }
 
   _recomputeSelectTouch(touchList) {
@@ -1888,6 +1942,9 @@ class Game {
     this._inputLock = 400;
     this._introStep = 0;
     this._introCursor = 1;
+    this._introPrevLeft = false;
+    this._introPrevRight = false;
+    this._introPrevA = false;
   }
 
   // ══════════════════════════════════════════════════
