@@ -181,9 +181,11 @@ const JBTN={
 };
 
 // ── Screen Time ───────────────────────────────────────
-const SCREEN_TIME_KEY = 'tinyGuardian_screenTime_v1';
-const SCREEN_TIME_LIMIT_MS = 20 * 60 * 1000; // 20 นาที
-const SCREEN_TIME_BREAK_MS =  5 * 60 * 1000; // พัก 5 นาที
+const SCREEN_TIME_KEY        = 'tinyGuardian_screenTime_v1';
+const SCREEN_TIME_EYE_AT_MS  = 20 * 60 * 1000;  // Eye Break ที่ครบ 20 นาที
+const SCREEN_TIME_EYE_MS     =      20 * 1000;   // Eye Break นาน 20 วินาที
+const SCREEN_TIME_BREAK_AT_MS= 40 * 60 * 1000;  // พักยาวที่ครบ 40 นาที
+const SCREEN_TIME_BREAK_MS   = 20 * 60 * 1000;  // พักยาว 20 นาที
 
 // ── Audio Volume ─────────────────────────────────────
 const BGM_VOLUME = 0.35;
