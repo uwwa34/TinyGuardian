@@ -272,6 +272,11 @@ class Game {
     this.charSelect = new CharSelectScreen();
     this._pendingMode = null; // 'solo' | 'local' | 'online'
     this._selPrev = { p1:{left:false,right:false,btnA:false}, p2:{left:false,right:false,btnA:false} };
+    this._introStep = 0;    // 0=เลือก difficulty, 1=เลือกโหมด
+    this._introCursor = 1; // cursor ปัจจุบัน (difficulty: 0/1/2, mode: 0/1/2)
+    this._introPrevLeft = false;
+    this._introPrevRight = false;
+    this._introPrevA = false;
     this._myCharKey = null;     // charKey ของ player เราเอง
     this._hostCharKey = null;   // charKey ที่ Host เลือก (รับผ่าน p1_char event)
     this._guestCharKey = null;  // charKey ที่ Guest เลือก (รับผ่าน p2_char event)
@@ -302,9 +307,12 @@ class Game {
     this.introTimer = 0;
 
     // Screen Time
-    this._sessionMs = 0;          // เวลาเล่นสะสมใน session นี้
-    this._breakTimer = 0;         // countdown พักที่เหลือ (ms)
+    this._sessionMs = 0;          // เวลาเล่นสะสมใน session นี้ (reset ทุก eye break)
+    this._totalSessionMs = 0;     // เวลาเล่นรวมทั้งหมด (reset เมื่อพักยาว)
+    this._breakTimer = 0;
     this._breakActive = false;
+    this._eyeBreakActive = false; // Eye Break 20 วินาที (20-20-20)
+    this._eyeBreakTimer = 0;
 
     // Co-op helpers
     this._coopHpOverride = null;
@@ -520,32 +528,71 @@ class Game {
 
     // ── Screen Time ──────────────────────────────────
     if (this._breakActive) {
+      // พักยาว 20 นาที (หลังเล่นรวม 40 นาที)
       this._breakTimer -= dt * 1000;
       if (this._breakTimer <= 0) {
-        // พักครบแล้ว → reset และเล่นต่อ
         this._breakActive = false;
         this._breakTimer = 0;
         this._sessionMs = 0;
+        this._totalSessionMs = 0;
+        this._saveScreenTime();
+      }
+      return;
+    }
+    if (this._eyeBreakActive) {
+      // Eye Break 20 วินาที (20-20-20)
+      this._eyeBreakTimer -= dt * 1000;
+      if (this._eyeBreakTimer <= 0) {
+        this._eyeBreakActive = false;
+        this._eyeBreakTimer = 0;
+        this._sessionMs = 0; // reset รอบ 20 นาที
         this._saveScreenTime();
       }
       return;
     }
     if (this.state === STATE.PLAYING || this.state === STATE.STAGE_CLEAR) {
       this._sessionMs += dt * 1000;
-      // save ทุก 1 นาที — ป้องกัน refresh หรือ crash
+      this._totalSessionMs += dt * 1000;
       if (!this._lastScreenTimeSave) this._lastScreenTimeSave = Date.now();
       if (Date.now() - this._lastScreenTimeSave >= 60 * 1000) {
         this._saveScreenTime();
         this._lastScreenTimeSave = Date.now();
       }
-      if (this._sessionMs >= SCREEN_TIME_LIMIT_MS) {
+      // ครบ 40 นาทีรวม → พักยาว 20 นาที
+      if (this._totalSessionMs >= SCREEN_TIME_SESSION_MS) {
         this._triggerBreak();
+        return;
+      }
+      // ครบ 20 นาที → Eye Break 20 วินาที (20-20-20)
+      if (this._sessionMs >= SCREEN_TIME_LIMIT_MS) {
+        this._triggerEyeBreak();
         return;
       }
     }
 
     switch (this.state) {
-      case STATE.INTRO:    this.introTimer += dt; this._stopBGM('bgm'); break;
+      case STATE.INTRO:
+        this.introTimer += dt; this._stopBGM('bgm');
+        // Joypad navigation
+        if (this._inputLock <= 0) {
+          const diffKeys = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
+          const diffIdx  = diffKeys.indexOf(this.difficulty);
+          const jL = this.input.left && !this._introPrevLeft;
+          const jR = this.input.right && !this._introPrevRight;
+          const jA = this.input.btnA && !this._introPrevA;
+          if (this._introStep === 0) {
+            if (jL) this.difficulty = diffKeys[Math.max(0, diffIdx-1)];
+            if (jR) this.difficulty = diffKeys[Math.min(2, diffIdx+1)];
+          } else {
+            if (jL) this._introCursor = Math.max(0, this._introCursor-1);
+            if (jR) this._introCursor = Math.min(2, this._introCursor+1);
+          }
+          if (jA) this._handleConfirm();
+          this._introPrevLeft  = this.input.left;
+          this._introPrevRight = this.input.right;
+          this._introPrevA     = this.input.btnA;
+        }
+        break;
       case 'COOP_LOBBY':   this.coopLobby.update(dt); this._stopBGM('bgm'); break;
       case STATE.PLAYING:
         this._updatePlaying(dt);
@@ -576,6 +623,15 @@ class Game {
       case STATE.TALLY:
         this.tally.update(dt);
         this._stopBGM('bgm');
+        // A button (keyboard T หรือ joypad) → ข้ามไปหน้าใส่ชื่อ
+        if (this.tally.done && this._inputLock <= 0) {
+          if (!this._tallyPrevA) this._tallyPrevA = false;
+          const justA = this.input.btnA && !this._tallyPrevA;
+          this._tallyPrevA = this.input.btnA;
+          if (justA) { this.state = STATE.NAME; this.nameScreen.reset(this.player.score); this._inputLock = 400; }
+        } else {
+          this._tallyPrevA = this.input.btnA;
+        }
         // HOST: ส่ง tallyPayload ซ้ำทุก frame จนกว่า Guest disconnect (reliable delivery)
         if (this._tallyPending && this.net && this.net.isHost && this.net.connected) {
           this.net.sendGameState(this._tallyPayload);
@@ -1248,6 +1304,7 @@ class Game {
       case STATE.SELECT:      this.charSelect.draw(ctx, this.images); break;
     }
     // Break overlay — วาดทับทุก state
+    if (this._eyeBreakActive) this._drawEyeBreak(ctx);
     if (this._breakActive) this._drawBreak(ctx);
     this._drawParticles(ctx);
   }
@@ -1316,26 +1373,38 @@ class Game {
     }
 
     // Solo play button
-    ctx.fillStyle = COL.PRIMARY;
-    _rr(ctx, WIDTH/2-120, 472, 240, 40, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 472, 240, 40, 14); ctx.stroke();
-    ctx.font = '15px '+FONT.MAIN; ctx.fillStyle = COL.HUD_TEXT;
+    ctx.fillStyle = this._introStep===1 && this._introCursor===0 ? COL.PRIMARY_D : COL.PRIMARY;
+    _rr(ctx, 8, 472, 116, 44, 12); ctx.fill();
+    if (this._introStep===1 && this._introCursor===0) { ctx.strokeStyle='#fff'; ctx.lineWidth=3; _rr(ctx,8,472,116,44,12); ctx.stroke(); }
+    ctx.font = '12px '+FONT.BODY; ctx.fillStyle = COL.HUD_TEXT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('🎮 เล่นคนเดียว', WIDTH/2, 492);
+    ctx.fillText('🎮', 66, 487); ctx.font='11px '+FONT.BODY;
+    ctx.fillText('เล่นคนเดียว', 66, 503);
 
     // Local Co-op button
-    ctx.fillStyle = COL.MINT;
-    _rr(ctx, WIDTH/2-120, 520, 240, 40, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 520, 240, 40, 14); ctx.stroke();
-    ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('🎮🎮 2 คน (เครื่องเดียว)', WIDTH/2, 540);
+    ctx.fillStyle = this._introStep===1 && this._introCursor===1 ? '#2E7D6B' : COL.MINT;
+    _rr(ctx, 132, 472, 126, 44, 12); ctx.fill();
+    if (this._introStep===1 && this._introCursor===1) { ctx.strokeStyle='#fff'; ctx.lineWidth=3; _rr(ctx,132,472,126,44,12); ctx.stroke(); }
+    ctx.fillStyle = COL.HUD_TEXT; ctx.font='12px '+FONT.BODY;
+    ctx.fillText('🎮🎮', 195, 487); ctx.font='11px '+FONT.BODY;
+    ctx.fillText('2คน เครื่องเดียว', 195, 503);
 
     // Online Co-op button
-    ctx.fillStyle = COL.SKY_BLUE;
-    _rr(ctx, WIDTH/2-120, 568, 240, 40, 14); ctx.fill();
-    ctx.strokeStyle = COL.PRIMARY_D; ctx.lineWidth = 1.5; _rr(ctx, WIDTH/2-120, 568, 240, 40, 14); ctx.stroke();
-    ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('👥 เล่น 2 คน (Online)', WIDTH/2, 588);
+    ctx.fillStyle = this._introStep===1 && this._introCursor===2 ? '#1565C0' : COL.SKY_BLUE;
+    _rr(ctx, 266, 472, 116, 44, 12); ctx.fill();
+    if (this._introStep===1 && this._introCursor===2) { ctx.strokeStyle='#fff'; ctx.lineWidth=3; _rr(ctx,266,472,116,44,12); ctx.stroke(); }
+    ctx.fillStyle = COL.HUD_TEXT; ctx.font='12px '+FONT.BODY;
+    ctx.fillText('👥', 324, 487); ctx.font='11px '+FONT.BODY;
+    ctx.fillText('2คน Online', 324, 503);
+
+    // Keyboard hint
+    if (this._introStep === 0) {
+      ctx.font = '11px '+FONT.BODY; ctx.fillStyle = 'rgba(93,64,55,0.5)';
+      ctx.fillText('◀ ▶ เลือกระดับ   A ยืนยัน', WIDTH/2, 528);
+    } else {
+      ctx.font = '11px '+FONT.BODY; ctx.fillStyle = 'rgba(93,64,55,0.5)';
+      ctx.fillText('◀ ▶ เลือกโหมด   A เริ่มเกม', WIDTH/2, 528);
+    }
 
     ctx.font = '24px '+FONT.BODY; ctx.textAlign = 'center';
     ctx.fillText('⭐', 50, 120+Math.sin(this.introTimer*1.5)*10);
@@ -1482,7 +1551,7 @@ class Game {
       return;
     }
 
-    if (['a','d','r','t','arrowleft','arrowright','o','p'].includes(kl)) e.preventDefault();
+    if (['a','d','r','t','j','l','o','p'].includes(kl)) e.preventDefault();
 
     // P1 keys: A=ซ้าย, D=ขวา, R=ยิง, T=กระโดด
     if (kl === 'a') this.input.left  = down;
@@ -1490,15 +1559,28 @@ class Game {
     if (kl === 'r') this.input.btnB  = down;
     if (kl === 't') this.input.btnA  = down;
 
+    // INTRO navigation: Left/Right เลื่อน cursor, A ยืนยัน
+    if (this.state === STATE.INTRO && down && this._inputLock <= 0) {
+      const diffKeys = [DIFFICULTY.EASY, DIFFICULTY.MEDIUM, DIFFICULTY.HARD];
+      const diffIdx  = diffKeys.indexOf(this.difficulty);
+      if (this._introStep === 0) {
+        if (kl === 'a') { this.difficulty = diffKeys[Math.max(0, diffIdx-1)]; return; }
+        if (kl === 'd') { this.difficulty = diffKeys[Math.min(2, diffIdx+1)]; return; }
+      } else {
+        if (kl === 'a') { this._introCursor = Math.max(0, this._introCursor-1); return; }
+        if (kl === 'd') { this._introCursor = Math.min(2, this._introCursor+1); return; }
+      }
+    }
+
     // P2 Local keys: ←=ซ้าย, →=ขวา, O=ยิง, P=กระโดด
     // ทำงานทั้งตอนเล่น (localCoop) และตอนเลือกตัวละคร (SELECT state)
     const isLocalP2Active = this.localCoop && this.player2;
     const isSelectP2 = this.state === STATE.SELECT && this._pendingMode === 'local';
     if (isLocalP2Active || isSelectP2) {
-      if (kl === 'arrowleft')  this.input2.left  = down;
-      if (kl === 'arrowright') this.input2.right = down;
-      if (kl === 'o')          this.input2.btnB  = down;
-      if (kl === 'p')          this.input2.btnA  = down;
+      if (kl === 'j') this.input2.left  = down;
+      if (kl === 'l') this.input2.right = down;
+      if (kl === 'o') this.input2.btnB  = down;
+      if (kl === 'p') this.input2.btnA  = down;
     }
 
     if (down && this._inputLock <= 0) {
@@ -1533,25 +1615,38 @@ class Game {
   }
 
   _handleConfirm() {
-    if (this.state === STATE.INTRO) this._startGame();
-    else if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(); this._inputLock = 400; }
+    if (this.state === STATE.INTRO) {
+      if (this._introStep === 0) {
+        // Step 1: confirm difficulty → ไปเลือกโหมด
+        this._introStep = 1;
+        this._introCursor = 0;
+      } else {
+        // Step 2: confirm mode
+        if (this._introCursor === 0) this._startGame();
+        else if (this._introCursor === 1) this._startLocalCoop();
+        else { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; }
+      }
+    }
+    else if (this.state === STATE.TALLY && this.tally.done) {
+      this.state = STATE.NAME; this.nameScreen.reset(this.player.score); this._inputLock = 400;
+    }
     else if (this.state === STATE.RANKING) this._restartGame();
   }
 
   _handleIntroTap(pos) {
-    // Difficulty buttons: y 432-466 (dh=34)
+    // Difficulty buttons (touch → เลือกได้เลยไม่ต้อง confirm)
     if (pos.y >= 432 && pos.y <= 466) {
       const dw=108, dg=6, dx0=(WIDTH-(dw*3+dg*2))/2;
       if (pos.x >= dx0 && pos.x <= dx0+dw) { this.difficulty = DIFFICULTY.EASY; return true; }
       if (pos.x >= dx0+dw+dg && pos.x <= dx0+dw*2+dg) { this.difficulty = DIFFICULTY.MEDIUM; return true; }
       if (pos.x >= dx0+dw*2+dg*2 && pos.x <= dx0+dw*3+dg*2) { this.difficulty = DIFFICULTY.HARD; return true; }
     }
-    // Solo button: y 472-512
-    if (pos.y >= 472 && pos.y <= 512) { this._startGame(); return true; }
-    // Local Co-op button: y 520-560
-    if (pos.y >= 520 && pos.y <= 560) { this._startLocalCoop(); return true; }
-    // Online Co-op button: y 568-608
-    if (pos.y >= 568 && pos.y <= 608) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
+    // Mode buttons: touch → ไปต่อได้เลย
+    if (pos.y >= 472 && pos.y <= 516) {
+      if (pos.x >= 8   && pos.x <= 124) { this._startGame();       return true; }
+      if (pos.x >= 132 && pos.x <= 258) { this._startLocalCoop();  return true; }
+      if (pos.x >= 266 && pos.x <= 382) { this.state = 'COOP_LOBBY'; this.coopLobby.state = 'menu'; return true; }
+    }
     return false;
   }
 
@@ -1596,7 +1691,7 @@ class Game {
         this._handleCoopLobbyTap(pos);
         return;
       }
-      if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(); this._inputLock = 400; return; }
+      if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(this.player.score); this._inputLock = 400; return; }
       if (this.state === STATE.RANKING) { this._restartGame(); return; }
       if (this.state === STATE.NAME && e.changedTouches.length > 0) {
         const pos = this._getCanvasPos(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
@@ -1673,7 +1768,7 @@ class Game {
     if (down && this._inputLock <= 0) {
       if (this.state === STATE.INTRO) { if (this._handleIntroTap(pos)) return; return; }
       if (this.state === 'COOP_LOBBY') { this._handleCoopLobbyTap(pos); return; }
-      if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(); this._inputLock = 400; return; }
+      if (this.state === STATE.TALLY && this.tally.done) { this.state = STATE.NAME; this.nameScreen.reset(this.player.score); this._inputLock = 400; return; }
       if (this.state === STATE.RANKING) { this._restartGame(); return; }
       if (this.state === STATE.NAME) {
         const result = this.nameScreen.handleTouch(pos.x, pos.y);
@@ -1779,6 +1874,8 @@ class Game {
     this._tallyPayload = null;
     this._waitingForTally = false;
     this._stage4Timer = 0;
+    this._eyeBreakActive = false;
+    this._eyeBreakTimer = 0;
     this._myCharKey = null;
     this._hostCharKey = null;
     this._guestCharKey = null;
@@ -1789,6 +1886,8 @@ class Game {
     this.state = STATE.INTRO;
     this.introTimer = 0;
     this._inputLock = 400;
+    this._introStep = 0;
+    this._introCursor = 1;
   }
 
   // ══════════════════════════════════════════════════
@@ -1859,7 +1958,16 @@ class Game {
     } catch(e) {}
   }
 
+  _triggerEyeBreak() {
+    // Eye Break 20 วินาที — หยุดเกมแต่ไม่ game over
+    this._eyeBreakActive = true;
+    this._eyeBreakTimer = SCREEN_TIME_EYE_MS;
+    this._stopBGM('bgm');
+    this._saveScreenTime();
+  }
+
   _triggerBreak() {
+    // พักยาว 20 นาที — หลังเล่นรวม 40 นาที
     this._breakActive = true;
     this._breakTimer = SCREEN_TIME_BREAK_MS;
     this._stopBGM('bgm');
@@ -1867,48 +1975,95 @@ class Game {
       this.state = STATE.GAME_OVER;
       this.stageClearTimer = 99999;
     }
-    this._saveScreenTime(); // บันทึก breakUntil = now + 5 นาที
+    this._saveScreenTime();
+  }
+
+  _drawEyeBreak(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(30,30,60,0.96)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Icon
+    ctx.font = '72px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('👁️', WIDTH/2, HEIGHT/2 - 150);
+
+    // Title
+    ctx.font = 'bold 22px ' + FONT.MAIN;
+    ctx.fillStyle = '#FFE082';
+    ctx.fillText('กฎ 20-20-20 👀', WIDTH/2, HEIGHT/2 - 68);
+
+    // Message
+    ctx.font = '15px ' + FONT.BODY;
+    ctx.fillStyle = '#FFF9C4';
+    ctx.fillText('มองออกไปไกลๆ 20 ฟุต', WIDTH/2, HEIGHT/2 - 28);
+    ctx.fillText('เพื่อลดความล้าของกล้ามเนื้อตา', WIDTH/2, HEIGHT/2 + 2);
+
+    // Countdown วงกลม
+    const secLeft = Math.ceil(this._eyeBreakTimer / 1000);
+    const pct = this._eyeBreakTimer / SCREEN_TIME_EYE_MS;
+    const cx = WIDTH/2, cy = HEIGHT/2 + 90, r = 50;
+    // วงนอก
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+    // วงนับถอยหลัง
+    ctx.strokeStyle = '#FFE082';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + Math.PI*2*pct);
+    ctx.stroke();
+    // ตัวเลข
+    ctx.font = 'bold 36px ' + FONT.MAIN;
+    ctx.fillStyle = '#FFE082';
+    ctx.fillText(secLeft, cx, cy);
+
+    ctx.font = '12px ' + FONT.BODY;
+    ctx.fillStyle = 'rgba(255,249,196,0.6)';
+    ctx.fillText('วินาที', cx, cy + 30);
+
+    // Footer
+    ctx.font = '12px ' + FONT.BODY;
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText('เกมจะกลับมาอัตโนมัติ ✨', WIDTH/2, HEIGHT/2 + 170);
+
+    ctx.restore();
   }
 
   _drawBreak(ctx) {
-    // Full overlay
     ctx.save();
     ctx.fillStyle = 'rgba(255,248,225,0.97)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // Icon
     ctx.font = '64px serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('👀', WIDTH/2, HEIGHT/2 - 120);
+    ctx.fillText('😴', WIDTH/2, HEIGHT/2 - 130);
 
-    // Title
-    ctx.font = 'bold 26px ' + FONT.MAIN;
+    ctx.font = 'bold 24px ' + FONT.MAIN;
     ctx.fillStyle = COL.PRIMARY_D;
-    ctx.fillText('เล่นมานานแล้วนะ!', WIDTH/2, HEIGHT/2 - 40);
+    ctx.fillText('เล่นมาครบ 40 นาทีแล้ว!', WIDTH/2, HEIGHT/2 - 50);
 
-    // Subtitle
     ctx.font = '15px ' + FONT.BODY;
     ctx.fillStyle = COL.HUD_TEXT;
-    ctx.fillText('พักสายตาสักครู่ก่อนนะ 🌟', WIDTH/2, HEIGHT/2);
+    ctx.fillText('พักสายตา 20 นาที แล้วค่อยกลับมานะ 🌟', WIDTH/2, HEIGHT/2 - 10);
 
-    // Countdown
     const secLeft = Math.ceil(this._breakTimer / 1000);
     const min = Math.floor(secLeft / 60);
     const sec = secLeft % 60;
     const timeStr = min + ':' + (sec < 10 ? '0' : '') + sec;
-
-    ctx.font = 'bold 48px ' + FONT.MAIN;
+    ctx.font = 'bold 52px ' + FONT.MAIN;
     ctx.fillStyle = COL.PRIMARY_D;
     ctx.fillText(timeStr, WIDTH/2, HEIGHT/2 + 70);
 
     ctx.font = '13px ' + FONT.BODY;
     ctx.fillStyle = 'rgba(93,64,55,0.6)';
-    ctx.fillText('อีกสักครู่จะเล่นต่อได้เลย!', WIDTH/2, HEIGHT/2 + 120);
+    ctx.fillText('อีกสักครู่จะเล่นต่อได้เลย!', WIDTH/2, HEIGHT/2 + 128);
 
-    // Progress bar
     const pct = 1 - (this._breakTimer / SCREEN_TIME_BREAK_MS);
-    const bw = 260, bh = 10, bx = WIDTH/2 - bw/2, by = HEIGHT/2 + 148;
+    const bw = 260, bh = 10, bx = WIDTH/2 - bw/2, by = HEIGHT/2 + 155;
     ctx.fillStyle = 'rgba(0,0,0,0.1)';
     ctx.beginPath(); _rr(ctx, bx, by, bw, bh, 5); ctx.fill();
     ctx.fillStyle = COL.PRIMARY;
