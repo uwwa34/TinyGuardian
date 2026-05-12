@@ -1,183 +1,236 @@
 # 🛡️ Tiny Guardian — ผู้พิทักษ์ตัวจิ๋ว
 
-> เกม platformer สไตล์ Bubble Bobble สำหรับเด็ก 6–12 ปี  
-> เล่นคนเดียวหรือ 2 คน Online Co-op ได้เลย!
-
-🎮 **[เล่นเลย → uwwa34.github.io/TinyGuardian](https://uwwa34.github.io/TinyGuardian)**
+> เกม Platform Action บน HTML5 Canvas สำหรับมือถือและเดสก์ท็อป  
+> รองรับ 1 คน, Local Co-op 2 คน (เครื่องเดียว) และ Online Co-op 2 คน
 
 ---
 
-## 📸 Screenshots
+## 📱 ข้อมูลเกม
 
-| Intro | Gameplay | Co-op |
+| รายการ | รายละเอียด |
+|---|---|
+| Platform | HTML5 Canvas (390×720 px) |
+| รองรับ | Mobile Browser, Desktop Browser |
+| ภาษา | ไทย |
+| จำนวน Stage | 4 Stage |
+| Online Server | Render.com (WebSocket) |
+
+---
+
+## 🎮 โหมดการเล่น
+
+### 1. เล่นคนเดียว (Solo)
+ผู้เล่น P1 เล่นคนเดียว ผ่าน 4 Stage เอาตัวรอดให้ครบ
+
+### 2. 2 คน เครื่องเดียว (Local Co-op)
+P1 และ P2 เล่นบนเครื่องเดียวกัน ใช้คนละชุด Keyboard
+
+### 3. 2 คน Online (Online Co-op)
+P1 (Host) สร้างห้อง → ส่ง Room Code ให้ P2 (Guest) เข้าร่วม  
+Host รัน Physics ทั้งหมด — Guest เป็น renderer ผ่าน WebSocket
+
+---
+
+## ⌨️ การควบคุม
+
+### Virtual Joypad (Touch / Mouse)
+| ปุ่ม | หน้าที่ |
+|---|---|
+| ◀ | เดินซ้าย |
+| ▶ | เดินขวา |
+| **B** | ยิง (กดค้างเพื่อ Charge) |
+| **A** | กระโดด / ยืนยัน |
+
+### Keyboard — P1
+| ปุ่ม | หน้าที่ |
+|---|---|
+| `A` | เดินซ้าย |
+| `D` | เดินขวา |
+| `R` | ยิง / Charge |
+| `T` | กระโดด / ยืนยัน |
+
+### Keyboard — P2 (Local Co-op เท่านั้น)
+| ปุ่ม | หน้าที่ |
+|---|---|
+| `J` | เดินซ้าย |
+| `L` | เดินขวา |
+| `O` | ยิง / Charge |
+| `P` | กระโดด |
+
+> ใช้ได้ทั้ง Upper และ Lower case
+
+### Intro Screen Navigation (Keyboard/Joypad)
+1. `◀ ▶` เลือกระดับความยาก → `A` ยืนยัน
+2. `◀ ▶` เลือกโหมดการเล่น → `A` เริ่มเกม  
+> Touch screen: แตะปุ่มเพื่อเลือกได้เลยโดยไม่ต้อง confirm 2 ครั้ง
+
+---
+
+## 🗺️ Stage และศัตรู
+
+| Stage | ศัตรู | บอส |
 |---|---|---|
-| ![intro](assets/images/player.png) | ![gameplay](assets/images/boss.png) | ![coop](assets/images/player2.png) |
+| 1 | ERASER 🟥, PENCIL ✏️ | — |
+| 2 | CLOWN 🤡, BALLOON 🎈, BOOMER 🪃 | — |
+| 3 | CANDY 🍭, COOKIE 🍪, JELLY 🟢 | มินิบอส 🧁 |
+| 4 | ทุกประเภท | มินิบอส 🧁 + บอสใหญ่ 👿 |
+
+### รายละเอียดศัตรู
+| ชื่อ | ประเภท | คะแนน | พิเศษ |
+|---|---|---|---|
+| ERASER | ภาคพื้น | 100 | — |
+| PENCIL | บิน | 150 | — |
+| CLOWN | ภาคพื้น | 120 | — |
+| BALLOON | บิน | 150 | — |
+| BOOMER | ภาคพื้น | 200 | ยิงกระสุน |
+| CANDY | ภาคพื้น | 120 | — |
+| COOKIE | บิน | 180 | — |
+| JELLY | กระเด้ง | 150 | — |
+| มินิบอส (บอสลึกลับ) | บอส | 800 | มี Angry Phase |
+| จอมวายร้ายจิ๋ว | บอสใหญ่ | 2,000 | 2 Phase, ยิง Food |
 
 ---
 
-## 🎮 วิธีเล่น
+## ⚔️ ระบบการต่อสู้
 
-### บนมือถือ (Touch)
+- **ยิงธรรมดา** — กด B
+- **Charge Attack** — กดค้าง B จนเต็ม แล้วปล่อย → กระสุนพลังสูง
+- **Combo** — กำจัดศัตรูต่อเนื่องภายใน 2 วินาที สูงสุด 8x multiplier
+- **Invincibility Frames** — โดนตีแล้วมีกรอบปกป้อง 1.5 วินาที
+
+---
+
+## 💎 ระดับความยาก
+
+| ระดับ | HP (Solo) | HP (Co-op) | ศัตรู | บอส |
+|---|---|---|---|---|
+| 🐣 มือใหม่ | 12 | 10 | ช้า / อ่อน | อ่อน |
+| ⭐ นักผจญภัย | 10 | 8 | ปกติ | ปกติ |
+| 🏆 ผู้พิทักษ์ | 8 | 5 | เร็ว / แข็ง | แข็ง |
+
+---
+
+## 🏆 ระบบคะแนน
+
+| รายการ | คะแนน |
+|---|---|
+| กำจัดศัตรูแต่ละตัว | ตามประเภท × Combo Multiplier |
+| ผ่านแต่ละ Stage | +500 pts |
+| Time Bonus | เวลาที่เหลือ × 10 pts/วินาที |
+| Combo Multiplier | สูงสุด 8x |
+
+**คะแนนรวม Co-op** = P1 + P2 รวมกัน (ทั้ง 2 หน้าจอเห็นเท่ากัน)  
+บันทึก Top 10 ลง LocalStorage
+
+---
+
+## 🎭 เลือกตัวละคร
+
+ก่อนเริ่ม Stage 1 เลือกตัวละครได้ 4 ตัว (player1–player4)  
+ใน Co-op ไม่สามารถเลือกตัวซ้ำกันได้
+
 | ปุ่ม | หน้าที่ |
 |---|---|
-| ◀ / ▶ | เดินซ้าย / ขวา |
-| **A** | กระโดด (กดค้างไว้ = กระโดดสูงขึ้น) |
-| **B** | ยิง (กดค้าง 1.5 วิ = Charge Shot!) |
-
-### บน PC (Keyboard)
-| ปุ่ม | หน้าที่ |
-|---|---|
-| `A` / `D` หรือ `←` / `→` | เดินซ้าย / ขวา |
-| `Space` | กระโดด |
-| `B` | ยิง / Charge Shot |
+| ◀ / ▶ (Joypad / Keyboard) | เลื่อนเลือก |
+| A | ยืนยัน |
 
 ---
 
-## 👥 Online Co-op
-
-1. คนแรกกด **"เล่น 2 คน (Online)"** → **"สร้างห้อง"** → ได้รหัส 4 ตัว
-2. บอกรหัสให้เพื่อน → เพื่อนกด **"เข้าห้อง"** → ใส่รหัส
-3. Host กด **"เริ่มเกม!"**
-
-> ⚠️ Server ใช้ Render.com Free Tier — อาจใช้เวลา 30–60 วินาทีในการเชื่อมต่อครั้งแรก เนื่องจาก server sleep หลังไม่มีการใช้งาน 15 นาที
-
----
-
-## 🗺️ เนื้อหาในเกม
-
-### 4 ด่าน
-| ด่าน | ธีม | ศัตรู | บอส |
-|---|---|---|---|
-| 1 🏫 | โรงเรียน | ยางลบ, ดินสอ | — |
-| 2 🎪 | สวนสนุก | ตัวตลก, บอลลูน, บูมเมอแรง | — |
-| 3 🍬 | โลกขนม | ลูกกวาด, คุกกี้, เยลลี่ | 🧁 คัพเค้กยักษ์ |
-| 4 🏰 | ปราสาท | ผสมทุกประเภท | 👿 จอมวายร้ายจิ๋ว (3 Phase) |
-
-### ระดับความยาก
-| | ง่าย 🟢 | ปกติ 🟡 | ยาก 🔴 |
-|---|---|---|---|
-| HP ผู้เล่น | 12 | 10 | 8 |
-| HP ศัตรู | ×0.7 | ×1.0 | ×1.4 |
-| ความเร็วศัตรู | ×0.8 | ×1.0 | ×1.2 |
-| HP บอส | ×0.6 | ×1.0 | ×1.5 |
-
----
-
-## 🏗️ โครงสร้างโปรเจกต์
+## 🌐 Online Co-op — Architecture
 
 ```
-tiny-guardian/
-├── index.html              — Boot loader, asset loading, canvas scaling
-├── manifest.json           — PWA manifest
+Host ──► WebSocket ──► Render.com ──► Guest
+  │      send state (50ms)             │
+  │      ◄── receive input ◄───────────┘
+  │
+  └── รัน Physics, AI, Collision ทั้งหมด
+      Guest เป็น pure renderer
+```
+
+**Server URL:** `https://tiny-guardian-server-1.onrender.com`  
+> Free tier บน Render.com — cold start ครั้งแรกอาจใช้เวลา 30–60 วินาที
+
+---
+
+## ⏱️ ระบบ Screen Time (สุขภาพดวงตา)
+
+| เวลาเล่นสะสม | เหตุการณ์ |
+|---|---|
+| 0–20 นาที | เล่นปกติ |
+| ครบ 20 นาที | **Eye Break 20 วินาที** — หน้าจอมืด แสดง "มองออกไปไกล 20 ฟุต" countdown วงกลม |
+| 20–40 นาที | เล่นปกติ |
+| ครบ 40 นาที | **พักยาว 20 นาที** — countdown นาที:วินาที หลังครบกลับมาเล่นใหม่ |
+
+- Eye Break **ไม่ Game Over** — เกมหยุด ณ จุดนั้น แล้วกลับมาต่ออัตโนมัติ
+- แถบ Progress Bar (2 ชั้น) แสดงเวลาที่เหลือใต้ HUD ตลอดเวลา
+
+---
+
+## 📁 โครงสร้างไฟล์
+
+```
+/
+├── index.html
 ├── js/
-│   ├── settings.js         — Config ทั้งหมด (physics, colors, enemies, stages)
-│   ├── player.js           — Player movement, jump, charge attack
-│   ├── world.js            — Platforms (static/moving/disappearing), background
-│   ├── enemy.js            — Enemy AI (ground/fly/bounce), spawn
-│   ├── projectile.js       — Player bullets + Enemy projectiles
-│   ├── items.js            — Items (Coin/Special/Heart)
-│   ├── boss.js             — MiniBoss + Final Boss, AI phases
-│   ├── hud.js              — HP hearts, scores, timer, charge bar
-│   ├── ranking.js          — Tally, Name entry, Leaderboard (localStorage)
-│   ├── network.js          — WebSocket Co-op client + Lobby UI
-│   └── game.js             — Main loop, state machine, audio, input
-└── assets/
-    ├── images/             — Sprites (player, enemies, boss, backgrounds)
-    └── sounds/             — SFX (.wav) + BGM (.mp3)
+│   ├── settings.js     ค่าคงที่, Difficulty, ASSET_IMAGES, ASSET_SOUNDS
+│   ├── player.js       Player class — movement, physics, draw, charKey
+│   ├── world.js        World/Stage — background, platforms
+│   ├── enemy.js        Enemy AI, wave spawning
+│   ├── projectile.js   Bullet system — player & enemy
+│   ├── items.js        Item spawning, pickup
+│   ├── boss.js         Boss & Miniboss AI, phases
+│   ├── hud.js          HUD — HP hearts, score, stage timer, combo
+│   ├── ranking.js      TallyScreen, NameScreen, RankingScreen
+│   ├── network.js      NetworkManager — WebSocket client
+│   └── game.js         Game loop, state machine, input, screen time
+├── assets/
+│   ├── images/         PNG sprites (17 ไฟล์ — ดู Asset List)
+│   └── sounds/         WAV/MP3 (10 ไฟล์)
+└── server/
+    └── server.js       Node.js WebSocket relay server
 ```
 
 ---
 
-## ⚙️ Tech Stack
+## 🔄 State Machine
 
-- **Vanilla JavaScript** — ไม่มี framework, ไม่มี bundler
-- **HTML5 Canvas** — 390×720px portrait
-- **Web Audio API** — SFX พร้อม iOS unlock
-- **WebSocket** — Online Co-op ผ่าน Node.js relay server
-- **PWA** — ติดตั้งได้บน iOS/Android
-- **GitHub Pages** — Host เกม
-- **Render.com** — Host Co-op server (Free Tier)
-
----
-
-## 🚀 Deploy
-
-### เกม (GitHub Pages)
 ```
-1. Push โค้ดขึ้น main branch
-2. Settings → Pages → Deploy from branch → main / (root)
-3. เกมจะอยู่ที่ https://<username>.github.io/<repo-name>
-```
-
-### Co-op Server (Render.com)
-```
-1. สร้าง repo แยกสำหรับ server/ folder
-2. Render.com → New Web Service → เชื่อมต่อ repo
-3. Build: npm install  |  Start: node server.js  |  Plan: Free
-4. แก้ COOP_SERVER_URL ใน js/settings.js ให้ตรงกับ Render URL
+LOADING → INTRO → SELECT (เลือกตัวละคร)
+                     ↓
+                  PLAYING ──► STAGE_CLEAR ──► (วน 4 รอบ)
+                     ↓               ↓
+                  GAME_OVER       TALLY → NAME → RANKING → INTRO
 ```
 
 ---
 
-## 🔧 การพัฒนาต่อ
+## 🚀 การ Deploy
 
-### เพิ่มศัตรูใหม่
-1. เพิ่ม entry ใน `ENEMY` object ใน `settings.js`
-2. เพิ่มเข้า `STAGE_WAVES` ของด่านที่ต้องการ
-3. (Optional) เพิ่ม image key ใน `ASSET_IMAGES`
+### Client — GitHub Pages
+```bash
+git push origin main
+# GitHub Pages serve index.html อัตโนมัติ
+```
 
-### เพิ่มด่านใหม่
-1. เพิ่ม platform layout ใน `PLAT_PRESETS[5]` ใน `settings.js`
-2. เพิ่ม waves ใน `STAGE_WAVES[5]`
-3. เพิ่ม `STAGE_TIME[5]`, `STAGE_COL[5]`
-4. แก้ `currentStage > 4` → `> 5` ใน `game.js`
-
-### ปรับ Difficulty
-แก้ค่าใน `DIFFICULTY` object ใน `settings.js` — multipliers ถูก apply อัตโนมัติ
-
-### เพิ่ม BGM
-วาง `bgm.mp3` ไว้ที่ `assets/sounds/bgm.mp3` — โหลดและเล่นอัตโนมัติเมื่อเริ่มเกม
+### Server — Render.com
+```
+Root directory : server/
+Build Command  : npm install
+Start Command  : node server.js
+Runtime        : Node.js
+```
 
 ---
 
-## 🎵 Assets ที่ต้องการ
+## 📦 Dependencies
 
-### รูปภาพ (assets/images/)
-| ไฟล์ | ขนาดแนะนำ | หมายเหตุ |
-|---|---|---|
-| `player.png` | 52×60px | ผู้เล่น P1 |
-| `player2.png` | 52×60px | ผู้เล่น P2 (optional) |
-| `enemy_ground.png` | 50×50px | ศัตรูเดิน |
-| `enemy_air.png` | 50×50px | ศัตรูบิน |
-| `miniboss.png` | 96×96px | บอสด่าน 3 |
-| `boss.png` | 150×150px | บอสด่าน 4 |
-| `bg_stage1-4.png` | 390×590px | พื้นหลังแต่ละด่าน |
-
-### เสียง (assets/sounds/)
-| ไฟล์ | ใช้เมื่อ |
+| ส่วน | รายละเอียด |
 |---|---|
-| `bgm.mp3` | เพลงประกอบ (loop) |
-| `jump.wav` | กระโดด |
-| `dash.wav` | ยิงปกติ / charge release |
-| `start.wav` | charge เต็ม |
-| `hit.wav` | โดนโจมตี |
-| `boss_hit.wav` | บอสโดนยิง / ศัตรูตาย |
-| `coin.wav` | เก็บ item |
-| `boss_clear.wav` | ผ่านด่าน |
-| `warning.wav` | บอสปรากฏ |
-| `die.wav` | เสียชีวิต |
+| Client | Vanilla JavaScript + HTML5 Canvas — ไม่มี framework |
+| Server | Node.js + `ws` |
+| Storage | LocalStorage (ranking, screen time) |
+| Fonts | Google Fonts — Noto Sans Thai, Press Start 2P |
 
 ---
 
-## 📝 Known Issues
-
-- [ ] Co-op: P2 Tally อาจ miss ถ้า network packet หล่น (retry 3 ครั้งแล้ว)
-- [ ] BGM per stage (ปัจจุบันใช้ไฟล์เดียว)
-- [ ] Enemy sprite ยังแชร์กัน (enemy_ground / enemy_air)
-- [ ] Render.com free tier sleep → connect ช้า 30–60s ครั้งแรก
-
----
-
-## 📄 License
-
-MIT License — ใช้ได้อิสระ, เครดิตยินดีรับ 🙏
+*Tiny Guardian — สร้างด้วย ❤️ บน HTML5 Canvas*
